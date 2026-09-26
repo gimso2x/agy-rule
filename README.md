@@ -51,9 +51,12 @@ agy-rule/
 │   ├── 01-harness-records.md    # 하네스(.harness) 자산화 기록 규칙
 │   ├── 03-korean-natural-prose.md # 자연스러운 한국어 산문 및 번역투 배제
 │   ├── 03-korean-verb-usage.md  # 한국어 동사 및 조사 활용 규칙
+│   ├── 06-naming-conventions.md # 명명 규칙 (케이스 및 축약어 금지 표준)
 │   ├── 08-cli-execution.md      # CLI 안전 실행 및 백그라운드 관리
 │   ├── 11-evidence-required.md  # 코드 증거 기반 디버깅 원칙
-│   └── 15-memory-handling.md    # 메모리 및 컨텍스트 격리 관리
+│   ├── 12-tech-versions.md      # 기술 스택 및 버전 의존성 고정 규칙
+│   ├── 15-memory-handling.md    # 메모리 및 컨텍스트 격리 관리
+│   └── 21-coding-style.md       # 클린 코드 스타일 및 조기 반환(Early Return)
 └── .harness/                    # 에이전트 자산화 8대 디렉터리
     ├── audits/                  # 정합성 검사 및 감사 보고서
     ├── handoff/                 # 작업 인수인계 및 체크포인트
