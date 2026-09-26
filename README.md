@@ -46,20 +46,24 @@
 agy-rule/
 ├── GEMINI.md                    # 에이전틱 성역 최상위 진입점 (@include 정의)
 ├── RULES.md                     # 상시 로드 룰셋 (개돌 방지, 원리 기반, 한국어 윤문)
-├── rules/                       # 전문 세부 규칙 모음
+├── rules/                       # 전문 세부 규칙 모음 (16종 완비)
+│   ├── distilled/               # 핵심 규칙 초압축 증류본 모음
 │   ├── 00-instinct.md           # 행동 본능 및 브레이크 체크포인트 규약
 │   ├── 01-harness-records.md    # 하네스(.harness) 자산화 기록 규칙
 │   ├── 02-language-english.md   # 영문 테크니컬 라이팅 및 커밋/독스트링 표준
 │   ├── 03-korean-natural-prose.md # 자연스러운 한국어 산문 및 번역투 배제
 │   ├── 03-korean-verb-usage.md  # 한국어 동사 및 조사 활용 규칙
 │   ├── 04-punctuation.md        # 문장 부호 및 특수 기호 사용 규약
+│   ├── 05-meta-labels.md        # 메타 라벨, 커밋 태그, 알림 블록 표준
 │   ├── 06-naming-conventions.md # 명명 규칙 (케이스 및 축약어 금지 표준)
 │   ├── 07-response-visualization.md # 응답 시각화 (Mermaid 및 테이블 표준)
 │   ├── 08-cli-execution.md      # CLI 안전 실행 및 백그라운드 관리
 │   ├── 11-evidence-required.md  # 코드 증거 기반 디버깅 원칙
 │   ├── 12-tech-versions.md      # 기술 스택 및 버전 의존성 고정 규칙
 │   ├── 15-memory-handling.md    # 메모리 및 컨텍스트 격리 관리
-│   └── 21-coding-style.md       # 클린 코드 스타일 및 조기 반환(Early Return)
+│   ├── 21-coding-style.md       # 클린 코드 스타일 및 조기 반환(Early Return)
+│   ├── 22-generic-spec-standard.md # 일반 스펙 명세서 표준 (5대 필수 섹션)
+│   └── 23-architecture-audit.md # 아키텍처 감사 및 트레이드오프 검토 규약
 └── .harness/                    # 에이전트 자산화 8대 디렉터리
     ├── audits/                  # 정합성 검사 및 감사 보고서
     ├── handoff/                 # 작업 인수인계 및 체크포인트
