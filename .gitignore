@@ -1,0 +1,11 @@
+# System & Temporary
+.DS_Store
+Thumbs.db
+*.tmp
+*.temp
+scratch/
+
+# Local sensitive configs
+*.env
+*.local
+credentials.json
