@@ -49,9 +49,12 @@ agy-rule/
 ├── rules/                       # 전문 세부 규칙 모음
 │   ├── 00-instinct.md           # 행동 본능 및 브레이크 체크포인트 규약
 │   ├── 01-harness-records.md    # 하네스(.harness) 자산화 기록 규칙
+│   ├── 02-language-english.md   # 영문 테크니컬 라이팅 및 커밋/독스트링 표준
 │   ├── 03-korean-natural-prose.md # 자연스러운 한국어 산문 및 번역투 배제
 │   ├── 03-korean-verb-usage.md  # 한국어 동사 및 조사 활용 규칙
+│   ├── 04-punctuation.md        # 문장 부호 및 특수 기호 사용 규약
 │   ├── 06-naming-conventions.md # 명명 규칙 (케이스 및 축약어 금지 표준)
+│   ├── 07-response-visualization.md # 응답 시각화 (Mermaid 및 테이블 표준)
 │   ├── 08-cli-execution.md      # CLI 안전 실행 및 백그라운드 관리
 │   ├── 11-evidence-required.md  # 코드 증거 기반 디버깅 원칙
 │   ├── 12-tech-versions.md      # 기술 스택 및 버전 의존성 고정 규칙
