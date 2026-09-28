@@ -4,7 +4,7 @@
 ---
 
 ## 1. 전역 에이전틱 상시 규칙 로드
-@/home/ubuntu/agentic/RULES.md
+@/home/root1/agentic/RULES.md
 
 ---
 
