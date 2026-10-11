@@ -1,7 +1,7 @@
 # agy-rule
 
-> **Gemini / Antigravity 조련술 및 울타리 체결 룰셋**  
-> Threads [@vesperchant (김선달)](https://www.threads.com/@vesperchant)의 Gemini/Antigravity 조련술, 바이브 코딩 핸디캡 룰, 에이전틱 성역(Agentic Sanctuary) 설계를 기반으로 표준화한 Antigravity 룰셋 및 하네스 템플릿입니다.
+> **Gemini / Antigravity 조련술, 울타리 체결술 및 엔지니어링 표준 통합 룰셋**  
+> Threads [@vesperchant (김선달)](https://www.threads.com/@vesperchant)의 Gemini/Antigravity 조련술, 바이브 코딩 핸디캡 룰, 에이전틱 성역(Agentic Sanctuary) 설계 및 AWS AI-DLC 글로벌 엔지니어링 가이드라인을 완전 융합한 Antigravity 단일 원천(SSOT) 룰셋 & 스킬 에코시스템입니다.
 
 ---
 
@@ -25,18 +25,20 @@
 
 ### 3. 정제된 소통과 질문 매너 (Thoughtful Inquiry)
 * **생각 없는 질문 지양**: 답이 뻔한 질문, 사소한 단답형 질문으로 사용자의 맥락을 끊지 않습니다.
-* **구조화된 선택지 제시**: 사용자에게 결정을 요청할 때는 반드시 **(1) 문제 상황과 맥락, (2) 구체적인 선택지(권장 표기 포함), (3) 각 옵션의 장단점 및 트레이드오프**를 갖추어 질문합니다.
+* **구조화된 선택지 제시**: 사용자에게 결정을 요청할 때는 반드시 **(1) 문제 상황과 맥락, (2) 구체적인 선택지(권장 표기 포함), (3) 각 옵션의 장단점 및 트레이드오프, (4) 기타(직접 서술)**를 갖추어 질문합니다.
 
 ### 4. 계획 및 아티팩트 운용 (Planning & Artifact Mode)
-* **Planning Mode 적극 활용**: 4단계 이상의 복잡한 기능 구현이나 리팩토링은 실행 전 단계별 계획을 수립하고 공유합니다.
+* **Planning Mode 적극 활용**: 4단계 이상의 복잡한 기능 구현이나 리팩토링은 실행 전 단계별 계획(`[ ]` 체크리스트)을 수립하고 공유합니다.
 * **Artifact 리뷰 준수**: 계획, 설계서, 주요 변경 명세는 구조화된 아티팩트(Artifact)로 작성하여 사용자가 검토할 수 있도록 합니다.
 * **컨텍스트 격리**: 대규모 리서치나 병렬 검증 태스크는 전문 서브에이전트에게 위임하여 메인 컨텍스트를 맑게 유지합니다.
 
 ### 5. 하네스 자산화 규약 (Harness Knowledge Assetization)
 * 일회성 채팅으로 끝내지 않고, 계획·감사·의사결정 이력을 `.harness/` 디렉터리에 영구 자산으로 기록·보존합니다.
 
-### 6. 자연스러운 한국어 산문 및 윤문
-* 번역투, 기계 번역 찌꺼기, 조사의 어색한 생략, 불필요한 외래어 남발을 배제하고 단단하고 정갈한 한국어 문장을 구사합니다.
+### 6. 엄격한 품질 & 보안 베이스라인 (Quality & Baseline Security)
+* **민감정보 보호**: 로그 및 메시지에 토큰, 비밀번호, PII 노출 금지
+* **입력 검증 & 인젝션 차단**: 파라미터화 쿼리 강제, 타입 안전성 유지
+* **불변식 사고(Invariant Thinking)**: Round-Trip(역변환 복원), 크기/원소 보존 불변식, 멱등성 검증
 
 ---
 
@@ -44,9 +46,10 @@
 
 ```text
 agy-rule/
+├── install.sh                   # 원클릭 환경 통합 및 자동 링크 배포 스크립트
 ├── GEMINI.md                    # 에이전틱 성역 최상위 진입점 (@include 정의)
-├── RULES.md                     # 상시 로드 룰셋 (개돌 방지, 원리 기반, 한국어 윤문)
-├── rules/                       # 전문 세부 규칙 모음 (16종 완비)
+├── RULES.md                     # 상시 로드 룰셋 (개돌 방지, 원리 기반, 한국어 윤문, 품질/보안)
+├── rules/                       # 전문 세부 규칙 모음 (18종 완비)
 │   ├── distilled/               # 핵심 규칙 초압축 증류본 모음
 │   ├── 00-instinct.md           # 행동 본능 및 브레이크 체크포인트 규약
 │   ├── 01-harness-records.md    # 하네스(.harness) 자산화 기록 규칙
@@ -63,7 +66,18 @@ agy-rule/
 │   ├── 15-memory-handling.md    # 메모리 및 컨텍스트 격리 관리
 │   ├── 21-coding-style.md       # 클린 코드 스타일 및 조기 반환(Early Return)
 │   ├── 22-generic-spec-standard.md # 일반 스펙 명세서 표준 (5대 필수 섹션)
-│   └── 23-architecture-audit.md # 아키텍처 감사 및 트레이드오프 검토 규약
+│   ├── 23-architecture-audit.md # 아키텍처 감사 및 트레이드오프 검토 규약
+│   ├── 24-code-quality.md       # DRY, 단일 책임, 엄격한 타입 및 보안 표준
+│   └── 25-git-workflow.md       # Git 커밋 메시지 규격 및 브랜치 전략
+├── skills/                      # 정예 에이전트 스킬 생태계 (8종 완비)
+│   ├── aidlc-workflow/          # AWS AI-DLC 수명주기 소프트웨어 기획/건설
+│   ├── archify/                 # 반응형 대화형 HTML 아키텍처 다이어그램 생성기
+│   ├── figma-to-code/           # Figma 노드 1:1 무손실 프로덕션 코드 변환
+│   ├── figma-code-sync-audit/   # Figma 디자인 vs 코드 5단계 정밀 싱크 감사
+│   ├── herdr/                   # 터미널 멀티플렉서 및 에이전트 세션 제어
+│   ├── insane-review/           # 전용 Chromium 격리 기반 초엄격 심층 코드 리뷰
+│   ├── ppt2pdf/                 # 오피스 문서 브라우저 렌더링 PDF 변환 & 직독 마크다운
+│   └── property-based-testing/  # 불변식(Invariant) 검증 및 속성 기반 테스트(PBT)
 └── .harness/                    # 에이전트 자산화 8대 디렉터리
     ├── audits/                  # 정합성 검사 및 감사 보고서
     ├── handoff/                 # 작업 인수인계 및 체크포인트
@@ -77,43 +91,24 @@ agy-rule/
 
 ---
 
-## 🚀 설치 및 사용법 (Installation & Usage)
+## 🚀 설치 및 일원화 동기화 (Quick Start)
 
-### 1. 전역 성역(Sanctuary)으로 클론
+### 1. 성역(Sanctuary) 저장소 클론 및 동기화
+어떤 환경(로컬 PC, OCI 클라우드 인스턴스, EC2 등)이든 단 한 번의 명령으로 전체 룰과 스킬이 자동 연동됩니다:
+
 ```bash
+# 1. 성역 저장소 클론
 git clone https://github.com/gimso2x/agy-rule.git ~/agentic
+
+# 2. 원클릭 동기화 스크립트 실행
+cd ~/agentic && ./install.sh
 ```
 
-### 2. Antigravity 워크스페이스 또는 전역 설정에 연동
-
-#### 방법 A: 워크스페이스 레벨 연동 (`GEMINI.md`)
-작업 중인 프로젝트 루트의 `GEMINI.md`에 아래 한 줄을 추가합니다:
-```markdown
-@/home/ubuntu/agentic/GEMINI.md
-```
-*(참고: 사용자 홈 경로에 맞게 절대 경로를 지정합니다.)*
-
-#### 방법 B: 전역 설정 레벨 연동 (`~/.gemini/config/GEMINI.md`)
-모든 워크스페이스에 기본 적용하려면 전역 파일에 등록합니다:
-```bash
-mkdir -p ~/.gemini/config
-echo "@/home/ubuntu/agentic/GEMINI.md" >> ~/.gemini/config/GEMINI.md
-```
-
-#### 방법 C: Antigravity 디스커버리 규칙 경로 연동 (`~/.agents/rules/`)
-Antigravity 2.0 규칙 디스커버리를 사용하려면 심볼릭 링크 또는 복사합니다:
-```bash
-mkdir -p ~/.agents/rules
-cp ~/agentic/rules/*.md ~/.agents/rules/
-```
-
----
-
-## 📊 정합성 및 컨텍스트 예산 검증 결과
-
-* **규칙 총량**: 최상위 재귀 확장 시 **120라인 / 8,305바이트**
-* **Antigravity 규칙 예산(24KB)** 대비 **34.6%** 수준으로, 컨텍스트 절삭(Truncation) 위험 없이 안전하게 주입됩니다.
-* 모든 단일 규칙 파일은 30라인 이하 / 1.5KB 이하로 최적화되었습니다.
+`install.sh` 스크립트가 다음 작업을 자동으로 수행합니다:
+* `~/.agents/rules/` 에 18종 전문 규칙 자동 심볼릭 링크
+* `~/.agents/skills/` 및 `~/.gemini/config/skills/` 에 8종 스킬 자동 심볼릭 링크
+* `~/.gemini/config/GEMINI.md` 및 `~/GEMINI.md` 에 전역 엔트리포인트 자동 구성
+* `.harness/` 8대 디렉터리 자산화 보장
 
 ---
 

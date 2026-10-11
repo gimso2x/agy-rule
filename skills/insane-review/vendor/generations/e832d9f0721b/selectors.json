@@ -1,0 +1,52 @@
+{
+  "schema": 1,
+  "model_switcher": [
+    "[data-testid=\"model-switcher-button\"]",
+    "[data-testid=\"model-switcher-dropdown-button\"]",
+    "button:has-text(\"높음\")"
+  ],
+  "model_label_container": [
+    "[data-testid=\"model-switcher-model-label\"]",
+    "[data-testid=\"model-label\"]",
+    "#model-label",
+    ".model-label",
+    "[role=\"dialog\"]",
+    "[role=\"dialog\"] [role=\"option\"]",
+    "[role=\"menu\"] [role=\"option\"]"
+  ],
+  "prompt_input": [
+    "div#prompt-textarea.ProseMirror"
+  ],
+  "prompt_input_fallback": [
+    "[contenteditable=\"true\"][id=\"prompt-textarea\"]"
+  ],
+  "file_upload_input": [
+    "input[type=\"file\"]#upload-files"
+  ],
+  "file_upload_input_fallback": [
+    "input[type=\"file\"]"
+  ],
+  "attachment_pill": [
+    "[data-testid=\"attachment-pill\"]",
+    "[data-testid^=\"attachment-pill\"]"
+  ],
+  "assistant_turn": [
+    "[data-message-author-role=\"assistant\"]"
+  ],
+  "stop_button": [
+    "[data-testid=\"stop-button\"]",
+    "button:has-text(\"Stop\")"
+  ],
+  "login_button": [
+    "[data-testid=\"login-button\"]",
+    "button:has-text(\"Log in\")"
+  ],
+  "copy_button": [
+    "[data-testid=\"copy-turn-action-button\"]",
+    "[data-testid^=\"copy-turn-action-button\"]"
+  ],
+  "duplicate_modal": [
+    "[data-testid=\"modal-duplicate-file\"]",
+    "#modal-duplicate-file"
+  ]
+}

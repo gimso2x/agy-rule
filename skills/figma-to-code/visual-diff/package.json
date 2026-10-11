@@ -1,0 +1,19 @@
+{
+  "name": "figma-skill-visual-diff",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Figma image API PNG ↔ dev 서버 캡처 픽셀 diff. figma 스킬에 종속된 자급자족 도구 — 프로젝트 의존성 그래프와 격리됨.",
+  "type": "module",
+  "scripts": {
+    "diff": "node run.mjs",
+    "test": "node tests/config.test.mjs",
+    "install-browser": "playwright install chromium"
+  },
+  "dependencies": {
+    "pixelmatch": "^6.0.0",
+    "sharp": "^0.35.0"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.49.0"
+  }
+}

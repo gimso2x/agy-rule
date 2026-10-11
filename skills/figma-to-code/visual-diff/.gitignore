@@ -1,0 +1,4 @@
+# 스킬 자급자족 의존성과 산출물 — 커밋하지 않음
+node_modules/
+outputs/
+*.log
