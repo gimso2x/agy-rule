@@ -30,7 +30,7 @@ Do not make a PDF-only request fail merely because Markdown generation was not r
 
 ## check
 
-Perform read-only readiness checks: Playwright/Chromium, img2pdf, dedicated profile/CDP 9223 ownership, and observable M365/browser prerequisites. Do not navigate to a new document or send images externally.
+Perform read-only readiness checks: Playwright/Chromium, img2pdf, Ego browser (chrome-agent)/CDP 9222 ownership, and observable M365/browser prerequisites. Do not navigate to a new document or send images externally.
 
 ## status
 

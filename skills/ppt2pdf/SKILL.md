@@ -40,9 +40,9 @@ Existing run options such as `--out`, `--keep-tab`, and `--reuse` pass through t
 
 `ppt2pdf.py` remains the low-level capture engine. It:
 
-1. Uses the dedicated WSL Playwright Chromium profile `~/.local/state/mygjc/ppt2pdf-profile` on CDP port **9223**.
-2. Reuses an existing browser only after verifying exact port/profile process binding; foreign ownership fails closed.
-3. Opens or reuses SharePoint/OneDrive, waits for manual M365 login when necessary, and detects PowerPoint or Word Online.
+1. Uses the user's Ego browser (Windows Chrome `C:\chrome-agent`, CDP port **9222**) to preserve logged-in M365/SharePoint sessions.
+2. Reuses an existing browser on CDP 9222 if alive; if down, launches Windows Chrome with `--remote-debugging-port=9222 --user-data-dir=C:\chrome-agent` (or local Chromium fallback).
+3. Opens or reuses SharePoint/OneDrive tabs, waits for manual M365 login when necessary, and detects PowerPoint or Word Online.
 4. Captures the rendered document page/slide surfaces without unsafe whole-screen fallback.
 5. Assembles an image-only PDF with `img2pdf` and stores captured PNGs beside it.
 
@@ -73,7 +73,7 @@ Do **NOT** send slide images to `gimso2xproxy` or external model scripts. When t
 
 ## Safety boundary
 
-Keep port 9223 dedicated to ppt2pdf; 9222-9224 remain reserved for insane-review/ppt2pdf/gptplan. Do not use a foreign browser on the dedicated port. Preserve the existing manual-login model and never export cookies/credentials. The browser/profile may stay alive so the M365 session survives; `cleanup` must not stop it.
+Connects to Ego browser via CDP port 9222 (configurable via `PPT2PDF_PORT`). Preserves the existing manual-login session in `C:\chrome-agent` without exporting cookies/credentials. The browser/profile stays alive so the M365 session survives; `cleanup` must not stop it.
 
 ## Tests
 

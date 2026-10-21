@@ -26,9 +26,38 @@ from pathlib import Path
 
 from playwright.sync_api import sync_playwright
 
-PORT = int(os.environ.get('PPT2PDF_PORT', '9223'))
+PORT = int(os.environ.get('PPT2PDF_PORT', '9222'))
 CDP = 'http://127.0.0.1:%d' % PORT
-PROFILE = Path.home() / '.local' / 'state' / 'mygjc' / 'ppt2pdf-profile'
+
+
+def get_default_profile() -> Path:
+    """chrome-agent 프로필(C:\\chrome-agent)을 최우선으로, 없으면 로컬 폴백."""
+    env_p = os.environ.get('PPT2PDF_PROFILE')
+    if env_p:
+        return Path(env_p)
+    # Windows C:\chrome-agent (WSL 마운트 경로)
+    c_agent = Path('/mnt/c/chrome-agent')
+    if c_agent.exists():
+        return c_agent
+    # 로컬 wbrowser 상태 확인
+    wb_runtime = Path.home() / '.local' / 'state' / 'wbrowser' / 'runtime.json'
+    if wb_runtime.exists():
+        try:
+            import json
+            with open(wb_runtime) as f:
+                data = json.load(f)
+                p = data.get('profileDir')
+                if p and len(p) >= 2 and p[1] == ':':
+                    wsl_p = Path(f'/mnt/{p[0].lower()}{p[2:].replace(chr(92), "/")}')
+                    if wsl_p.exists():
+                        return wsl_p
+        except Exception:
+            pass
+    # 폴백
+    return Path.home() / '.local' / 'state' / 'mygjc' / 'ppt2pdf-profile'
+
+
+PROFILE = get_default_profile()
 WORK = Path('/tmp/ppt2pdf')
 LOCK_FILE = Path.home() / '.gjc' / 'ppt2pdf.lock'
 OLD_COOKIE_FILE = Path.home() / '.gjc' / 'ppt2pdf-cookies.json'  # v1 유물 — 정리용
@@ -56,7 +85,20 @@ def pick_chromium(paths):
 
 
 def find_chromium():
-    """Playwright 번들 Chromium 탐색 — ~/.cache/ms-playwright/chromium-*/chrome-linux*/."""
+    """Chrome(Windows chrome.exe 또는 로컬/Playwright 번들) 탐색."""
+    win_chrome = Path('/mnt/c/Program Files/Google/Chrome/Application/chrome.exe')
+    if win_chrome.is_file() and os.access(win_chrome, os.X_OK):
+        return win_chrome
+    win_chrome_x86 = Path('/mnt/c/Program Files (x86)/Google/Chrome/Application/chrome.exe')
+    if win_chrome_x86.is_file() and os.access(win_chrome_x86, os.X_OK):
+        return win_chrome_x86
+    win_edge = Path('/mnt/c/Program Files (x86)/Microsoft/Edge/Application/msedge.exe')
+    if win_edge.is_file() and os.access(win_edge, os.X_OK):
+        return win_edge
+    for bin_name in ['google-chrome', 'google-chrome-stable', 'chromium', 'chromium-browser']:
+        p = shutil.which(bin_name)
+        if p:
+            return Path(p)
     return pick_chromium(sorted(Path.home().glob(
         '.cache/ms-playwright/chromium-*/chrome-linux*/chrome')))
 
@@ -79,7 +121,11 @@ def _pid_bound_to_profile(ps_lines, port, profile_dir):
 
 
 def profile_bound():
-    """CDP 포트가 우리 전용 프로필에 바인딩되었는지 /proc-기반(ps) 검증. fail-closed."""
+    """CDP 포트가 우리 전용 프로필에 바인딩되었는지 검증. fail-closed."""
+    # Windows Chrome(Ego / chrome-agent)이 9222에 응답하는 경우:
+    # Windows 호스트 프로세스는 WSL /proc (ps)에 노출되지 않으므로 CDP 연결로 검증 통과
+    if PORT == 9222 and chrome_alive():
+        return 0
     try:
         r = subprocess.run(['ps', '-eo', 'pid=,args='],
                            capture_output=True, text=True, timeout=5, check=True)
@@ -106,36 +152,51 @@ def acquire_run_lock():
 
 
 def ensure_browser():
-    """전용 WSL Chromium 확보: 살아 있으면(프로필 바인딩 검증 후) 재사용, 아니면 기동."""
+    """브라우저 확보: 살아 있으면 재사용, 아니면 chrome-agent(또는 Playwright Chromium) 기동."""
     if chrome_alive():
         profile_bound()
-        log('기존 Chromium(%d) 재사용 — 세션 유지를 위해 창을 닫지 말 것' % PORT)
+        log('기존 브라우저(CDP %d) 재사용 — 세션 유지를 위해 창을 닫지 말 것' % PORT)
         return
     exe = find_chromium()
     if exe is None:
-        sys.exit('Playwright Chromium 없음 — python3 -m playwright install chromium 후 재시도')
-    if 'DISPLAY' not in os.environ and 'WAYLAND_DISPLAY' not in os.environ:
-        if Path('/tmp/.X11-unix/X0').exists():
-            os.environ['DISPLAY'] = ':0'
-        elif Path('/tmp/.X11-unix/X100').exists():
-            os.environ['DISPLAY'] = ':100'
-        else:
-            os.environ['DISPLAY'] = ':0'
-    PROFILE.mkdir(mode=0o700, parents=True, exist_ok=True)
-    os.chmod(PROFILE, 0o700)
-    subprocess.Popen([str(exe), '--remote-debugging-address=127.0.0.1',
-                      '--remote-debugging-port=%d' % PORT,
-                      '--user-data-dir=%s' % PROFILE,
-                      '--no-first-run', '--no-default-browser-check'],
-                     stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-                     start_new_session=True)
+        sys.exit('Chrome/Chromium 없음 — 브라우저 설치 또는 Wbrowser 확인 후 재시도')
+
+    # Windows Chrome 실행 경로인 경우
+    if str(exe).startswith('/mnt/c'):
+        udd = 'C:\\chrome-agent' if str(PROFILE).startswith('/mnt/c/chrome-agent') else str(PROFILE)
+        cmd = [
+            str(exe),
+            f'--remote-debugging-port={PORT}',
+            f'--user-data-dir={udd}',
+            '--no-first-run',
+            '--no-default-browser-check',
+        ]
+        log('Windows Chrome(chrome-agent) 기동...')
+        subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
+    else:
+        if 'DISPLAY' not in os.environ and 'WAYLAND_DISPLAY' not in os.environ:
+            if Path('/tmp/.X11-unix/X0').exists():
+                os.environ['DISPLAY'] = ':0'
+            elif Path('/tmp/.X11-unix/X100').exists():
+                os.environ['DISPLAY'] = ':100'
+            else:
+                os.environ['DISPLAY'] = ':0'
+        PROFILE.mkdir(mode=0o700, parents=True, exist_ok=True)
+        os.chmod(PROFILE, 0o700)
+        subprocess.Popen([str(exe), '--remote-debugging-address=127.0.0.1',
+                          '--remote-debugging-port=%d' % PORT,
+                          '--user-data-dir=%s' % PROFILE,
+                          '--no-first-run', '--no-default-browser-check'],
+                         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                         start_new_session=True)
+
     for _ in range(40):
         time.sleep(1)
         if chrome_alive():
             profile_bound()
-            log('Chromium 시작됨 (프로필: %s, 포트 %d)' % (PROFILE, PORT))
+            log('브라우저 시작됨 (프로필: %s, 포트 %d)' % (PROFILE, PORT))
             return
-    sys.exit('Chromium 시작 실패 — WSLg 디스플레이 또는 같은 프로필을 쓰는 기존 브라우저 종료 확인')
+    sys.exit('브라우저 시작 실패 — 포트 %d 충돌 여부 또는 실행 상태 확인' % PORT)
 
 
 def persistent_context(browser):
@@ -305,13 +366,39 @@ def _capture_ppt_slides(pg, fr, work_dir):
     surface = fr.locator('[id^="SlideRootViewElement"]:visible')
     seq = []
     for number in range(1, total + 1):
-        fr.locator('[role="option"][aria-posinset="%d"]' % number).click()
-        fr.wait_for_function('''number => {
-            const selected = document.querySelector('[role="option"][aria-selected="true"]');
-            const roots = [...document.querySelectorAll('[id^="SlideRootViewElement"]')]
-                .filter(el => el.checkVisibility() && el.getBoundingClientRect().width > 600);
-            return selected?.getAttribute('aria-posinset') === String(number) && roots.length === 1;
-        }''', arg=number, timeout=15000)
+        target_file = work_dir / ('slide-%03d.png' % number)
+        if target_file.exists() and target_file.stat().st_size > 1000:
+            seq.append(number)
+            log('슬라이드 %d/%d 기존 캡처 재사용' % (number, total))
+            continue
+
+        loc = fr.locator('[role="option"][aria-posinset="%d"]' % number)
+        try:
+            loc.scroll_into_view_if_needed(timeout=3000)
+        except Exception:
+            pass
+        loc.click()
+        try:
+            fr.wait_for_function('''number => {
+                const selected = document.querySelector('[role="option"][aria-selected="true"]');
+                const roots = [...document.querySelectorAll('[id^="SlideRootViewElement"]')]
+                    .filter(el => el.checkVisibility() && el.getBoundingClientRect().width > 600);
+                return selected?.getAttribute('aria-posinset') === String(number) && roots.length === 1;
+            }''', arg=number, timeout=15000)
+        except Exception:
+            pg.wait_for_timeout(1000)
+            try:
+                loc.scroll_into_view_if_needed(timeout=3000)
+            except Exception:
+                pass
+            loc.click()
+            fr.wait_for_function('''number => {
+                const selected = document.querySelector('[role="option"][aria-selected="true"]');
+                const roots = [...document.querySelectorAll('[id^="SlideRootViewElement"]')]
+                    .filter(el => el.checkVisibility() && el.getBoundingClientRect().width > 600);
+                return selected?.getAttribute('aria-posinset') === String(number) && roots.length >= 1;
+            }''', arg=number, timeout=20000)
+
         pg.wait_for_timeout(1300)
         if selected.get_attribute('aria-posinset') != str(number):
             raise RuntimeError('슬라이드 선택 불일치: expected %d' % number)
@@ -322,10 +409,10 @@ def _capture_ppt_slides(pg, fr, work_dir):
         }''')
         target_surface = fr.locator(f'#{active_id}') if active_id else surface
         try:
-            target_surface.screenshot(path=str(work_dir / ('slide-%03d.png' % number)), timeout=10000)
+            target_surface.screenshot(path=str(target_file), timeout=10000)
         except Exception:
             pg.wait_for_timeout(1000)
-            target_surface.screenshot(path=str(work_dir / ('slide-%03d.png' % number)), timeout=15000)
+            target_surface.screenshot(path=str(target_file), timeout=15000)
         seq.append(number)
         log('슬라이드 %d/%d 캡처 확인' % (number, total))
     if slide_total(fr) != total:
@@ -352,8 +439,9 @@ def main():
 
     ensure_browser()
     WORK.mkdir(exist_ok=True)
-    for old in WORK.glob('slide-*.png'):
-        old.unlink()
+    if not (args.reuse or not args.url):
+        for old in WORK.glob('slide-*.png'):
+            old.unlink()
 
     with sync_playwright() as p:
         b = p.chromium.connect_over_cdp(CDP)
