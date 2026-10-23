@@ -1,214 +1,212 @@
 ---
 name: herdr
-description: "Control Herdr, a terminal multiplexer for coding agents. Use only when the user explicitly mentions Herdr or asks to use Herdr to inspect or control panes, tabs, workspaces, commands, or another agent. Do not use merely because a task could benefit from a background terminal, delegation, or parallel work. Requires HERDR_ENV=1."
+description: "사용자가 /skill:herdr 또는 Herdr로 작업하라고 명시적으로 요청할 때 사용한다. Herdr 안에서 현재 세션을 안전하게 제어하고 기본적으로 GJC를 실행하며, 필요할 때 daily/max-quality/antigravity 프로필과 독립 peer를 조합해 작업을 오케스트레이션한다. HERDR_ENV=1 필요."
+skill_version: 1.1.0
+skill_status: active
+skill_visibility: user
 ---
 
-# Herdr
+# Herdr with GJC
 
-Herdr organizes terminals into workspaces, tabs, and panes, recognizes coding agents running inside panes, and exposes the current session through the `herdr` CLI.
+Herdr is the terminal runtime. GJC is the default agent harness. A GJC preset is a whole session policy with its own default/executor/planner/architect/critic model chains; it is not a synonym for one team role. Keep runtime, harness, preset, and team role separate.
 
-Before issuing any control command, verify that this agent is running inside a Herdr-managed pane:
+## 1. Load the installed Herdr contract
 
-```bash
-test "${HERDR_ENV:-}" = 1
-```
+1. Verify `test "${HERDR_ENV:-}" = 1`. If it fails, stop and explain that this session must run inside Herdr. Do not control another session from outside Herdr.
+2. Run `herdr --skill` and read its complete output, recovering truncated output through its artifact reference when available. Treat that release-matched skill plus the installed CLI help as the authority for Herdr syntax and safety.
+3. If release-matched instructions and remembered examples differ, follow the installed release. Check `herdr status` before relying on a feature that may require a matching server version.
+4. The GJC policy below overrides bundled examples that choose Codex or Claude as the default worker; Herdr safety and lifecycle rules still apply.
 
-If the check fails, say that you are not running inside Herdr and stop. Do not inspect or control the focused Herdr session from outside Herdr.
+Do not run bare `herdr` for discovery because it can launch or attach the TUI. Use the relevant help/command group instead.
 
-When the check passes, the `herdr` binary in `PATH` talks to the current session. Use it to inspect neighboring work, create terminal layout, start agents and commands, read output, and wait for state changes.
+## 2. Choose the smallest execution mode
 
-## Learn the current CLI
+Do not spawn a team merely because Herdr is available. GJC already has internal role routing, so extra GJC panes should add independent context, alternative model composition, or genuinely parallel work rather than duplicating the harness's own planner/architect/executor/critic delegation.
 
-The installed binary is the authority for command syntax. Start with:
+- **No helper**: if the explicitly requested Herdr work is inspection/control only, do that directly without starting GJC.
+- **Single helper**: default for a bounded implementation, review, diagnosis, test run, or user-requested side pane. Let that GJC session use its internal role routing normally.
+- **Peer workflow**: add one independent GJC peer when a second opinion, separate review context, or alternative model composition materially improves confidence.
+- **Team workflow**: use multiple peers only when the user explicitly asks for a team/multi-agent flow or the task materially benefits from separated planning, implementation, and verification contexts.
 
-```bash
-herdr --help
-```
+Keep the calling agent as the coordinator by default. Do not create a dedicated coordinator pane unless the user asks for that topology.
 
-Then print the relevant command group by running the group without a subcommand:
+## 3. Default launcher and pane control
 
-```bash
-herdr agent
-herdr pane
-herdr workspace
-herdr tab
-herdr worktree
-herdr terminal
-herdr notification
-herdr integration
-herdr session
-herdr machine
-```
+- Launch **GJC**, not Codex or Claude Code, unless the user explicitly requests another agent. Do not silently fall back to another agent if GJC fails.
+- Default to sibling panes in the current tab. Preserve the task working directory with explicit `--cwd`, keep focus with `--no-focus`, and inspect layout before choosing `right` versus `down`.
+- Capture every pane ID from the creation response. Never guess IDs or rely on the UI-focused pane implicitly.
+- Do not create extra workspaces, worktrees, or tabs unless requested or the task explicitly requires isolation that cannot be achieved in the current working tree.
+- Do not close panes you did not create, stop the Herdr server, or answer approval/question dialogs without the required user authorization.
 
-Do not run bare `herdr` for discovery; it launches or attaches the TUI. Do not probe a mutating nested command by omitting arguments. Commands such as `herdr workspace create` are valid with defaults and will execute.
-
-Most control commands return JSON. Read identifiers and state from those responses instead of predicting them.
-
-## Understand layout, panes, and agents
-
-Choose the primitive that matches the job:
-
-- Workspace, tab, and pane topology organize terminal locations.
-- Pane commands control raw terminals, shells, tests, servers, input, and output.
-- Agent commands control the recognized coding agent currently occupying a pane.
-
-A pane exists whether or not it contains an agent. `agent start` requires an existing available shell pane and never creates, splits, or moves layout. Use pane commands for ordinary processes. Use agent commands when Herdr must validate agent identity or interpret `idle`, `working`, `blocked`, `done`, and `unknown` lifecycle states.
-
-Agent commands accept either a unique live agent name or the pane ID currently hosting that agent. They do not accept terminal IDs or bare agent-kind labels. Names must match `[a-z][a-z0-9_-]{0,31}` and be unique among live agents. A name follows the current pane occupant and is cleared when that agent exits, is released, or is replaced.
-
-`idle` and `done` both mean the agent is ready for input. The CLI/API uses the server's seen state to distinguish them; explicit focus commands mark the target seen, while reads do not. Each TUI client tracks viewed completions independently, so its Done badge can differ from the CLI or another client's badge. `blocked` means Herdr recognized an approval or question UI. `unknown` means an agent is present but Herdr cannot classify it confidently; it does not prove completion.
-
-## Use IDs and caller context
-
-Public IDs are opaque stable handles:
-
-- workspace: `w1`
-- tab: `w1:t1`
-- pane: `w1:p1`
-
-Closed tab and pane IDs are not reused. A pane moved into another workspace receives a new workspace-qualified pane ID. After `pane move`, continue with `.result.move_result.pane.pane_id` or the live agent name. The old value is reported as `.result.move_result.previous_pane_id`; only the moved process's inherited caller context keeps resolving that old ID, so do not use it as a general agent target.
-
-Herdr injects the caller's context into each managed pane:
+Start GJC in a fresh shell pane with:
 
 ```bash
-printf '%s\n' "$HERDR_WORKSPACE_ID" "$HERDR_TAB_ID" "$HERDR_PANE_ID"
+herdr pane run <pane-id> 'gjc --mpreset <preset>'
 ```
 
-Prefer `--current` when a pane command should target the calling pane. An omitted `pane split` target uses the calling pane when `HERDR_PANE_ID` is available, otherwise the focused pane. Other commands may use the UI-focused pane, which can belong to the user or another client.
+Use correct shell quoting for native arguments. Do not assume `herdr agent start --kind gjc` exists; supported native kinds are release-dependent.
 
-Discover live state with:
+After launch:
 
-```bash
-herdr workspace list
-herdr tab list --workspace "$HERDR_WORKSPACE_ID"
-herdr pane current --current
-herdr pane list --workspace "$HERDR_WORKSPACE_ID"
-herdr agent list
-```
+1. Read the pane and inspect `herdr pane process-info --pane <pane-id>`.
+2. Inspect `herdr agent get <pane-id>` / `herdr agent explain <pane-id>` when supported.
+3. Verify that GJC is actually the foreground process and that the intended working directory is in use. A shell startup wrapper can override the split's `--cwd`; if so, include the absolute task directory in the prompt and verify commands target it.
+4. Treat visible command echo, `idle`, `done`, or a configured preset as evidence to interpret, not proof that the requested work succeeded. Read the actual response and verify the requested outcome.
 
-Creation responses expose the IDs to use next. `workspace create` returns `.result.workspace`, `.result.tab`, and `.result.root_pane`. `tab create` returns `.result.tab` and `.result.root_pane`. `pane split` returns the new pane as `.result.pane`.
+### Native agent surface vs raw pane fallback
 
-IDs and live agent names are scoped to one server. Two saved SSH machines can both have `w1:p1` or an agent named `reviewer`. Selecting a machine in the TUI does not retarget commands running in your pane: without `--machine`, they still use the inherited session and socket context.
+Use `agent prompt/read/wait` only when the installed Herdr release and live detection show that the running GJC instance is a controllable native agent. A displayed label alone is not proof of native prompt lifecycle support.
 
-To control a saved SSH machine, use the same global prefix for discovery and every later command:
+If GJC is not natively controllable:
 
-```bash
-herdr --machine <label-or-id> agent list
-herdr --machine <label-or-id> pane list
-herdr --machine <label-or-id> agent prompt <remote-agent-name> "Reply with your current status." --wait --timeout 120000
-```
+1. Use the explicit pane ID.
+2. Immediately before submitting work, inspect both `pane process-info` and `pane read --source visible`.
+3. Proceed only when GJC is the foreground process and its ordinary empty input prompt is visible.
+4. Stop for any approval/question UI, active turn, unexpected process, or uncertain state.
+5. Submit literal prompt text with `herdr pane send-text <pane-id> '<shell-quoted prompt>'`, then `herdr pane send-keys <pane-id> enter`.
+6. Inspect the pane after submission. Never resend solely because status or lifecycle reporting is inconclusive.
+7. Use pane reads to verify the model response and requested outcome. Report this honestly as terminal coordination, not repaired native-agent support.
 
-The selector must be an enabled saved profile ID or a unique, case-sensitive label, not an arbitrary SSH hostname. Commands use that profile's remote session without an open TUI. Do not combine `--machine` with `--session` or `--remote`. Discover IDs on that machine; inherited local IDs and `--current` do not identify remote panes.
+For native agents, a timeout, stalled prompt, or `blocked` result does not prove the prompt was never delivered. Inspect state/output before deciding what to do; never blindly resubmit.
 
-Both installations must support machine API forwarding, and the remote server must already be running and API-compatible. Forwarding never installs, starts, or restarts a server and never falls back to Local. Local configuration, session management, installation commands, and interactive attachment are not forwarded. Remote worktree paths must be absolute, `~`, or start with `~/`; plugin link paths must be absolute. A connection failure does not prove a mutation was not applied: inspect remote state before retrying.
+## 4. Preset selection is a session policy, not a team-role mapping
 
-`herdr machine list` lists saved connection profiles, not a cross-machine pane inventory; add `--json` for scripts. Only add, remove, enable, or disable profiles when the user asks. Removing a profile disconnects the client but does not stop remote sessions. Adding a machine uses the remote default session unless `--remote-session` is explicitly supplied. Setup asks before stopping an incompatible server and defaults to No; do not approve replacement without the user's consent. Experimental handoff is not part of `machine add`.
+An explicitly requested preset takes precedence over automatic selection.
 
-## Start and coordinate an agent
+The current documented live profile family is:
 
-Default to a sibling pane in the current tab and the current working directory. Do not create a workspace, tab, worktree, or different cwd unless the user explicitly requests that topology or location.
+- **`daily`** — normal/default profile for everyday work.
+- **`max-quality`** — higher-quality profile; use when complexity, risk, stubborn diagnosis, or final verification justifies the extra model budget.
+- **`antigravity`** — alternative profile with a materially different model composition in the current configuration; use when explicitly requested or when a deliberately different peer composition is useful. Verify the live mapping before claiming model-family independence.
 
-Honor a direction requested by the user. Otherwise inspect the caller pane:
+Do **not** map presets as `architect = X`, `builder = Y`, `reviewer = Z`. Each preset already contains internal `default`, `executor`, `planner`, `architect`, and `critic` chains. Team roles describe what a pane is asked to do; the preset describes the entire GJC session's model policy.
 
-```bash
-herdr pane layout --pane "$HERDR_PANE_ID"
-```
+Default selection when the user did not choose:
 
-Split a wide pane to the right and a narrow or tall pane down. Avoid repeated same-direction splits that create unusably narrow columns or short rows. Keep the user's focus in the calling pane and explicitly preserve the caller's working directory:
+1. Start with `daily` for normal implementation, investigation, or review.
+2. Escalate a helper to `max-quality` only when the task materially benefits from stronger reasoning/verification.
+3. For an independent peer, prefer a preset whose **live** model composition differs meaningfully from the authoring session. `antigravity` is a candidate when its current mapping provides that difference; do not assume the name alone proves independence.
+4. If independence is important and no available preset gives a sufficiently different actual author/reviewer family, disclose that limitation rather than fabricating independence.
 
-```bash
-herdr pane split --current --direction right --cwd "$PWD" --no-focus
-```
+Before launch, verify that the requested preset exists in the **live runtime configuration**. The repository's `gjc-config/agent-templates/models.yml` is an installation seed and may be stale; it is not proof of the currently installed profile set. The runtime `~/.gjc/agent/models.yml` is the configuration SSOT. Prefer a GJC command that reports the live preset/model configuration. If direct inspection is required, inspect only the necessary profile/role fields and never print, copy, log, or commit the full file because it can contain provider credentials.
 
-Replace `right` with `down` when appropriate. Read the new pane ID from `.result.pane.pane_id`.
+If the requested preset is missing, stop and report it. Do not silently substitute another preset. Never add `--default` merely for per-pane selection because it changes the machine default.
 
-An available shell pane must be at its interactive prompt, with the shell itself in the foreground and no foreground command, editor, or agent running. Start a supported agent in that pane with a useful unique name:
+A configured preset is not proof of the actual model that handled a turn: fallbacks can change the family. For independent review, verify actual author/reviewer provenance when observable, including fallbacks, before describing the review as cross-family.
 
-```bash
-herdr agent start reviewer --kind codex --pane <returned-pane-id>
-```
+Panes do not create independent subscription quotas. Avoid duplicating expensive planning or review work across panes.
 
-Use the kind requested by the user. Run `herdr agent` to inspect the installed kind list and options. Pass native agent arguments only after `--`:
+## 5. Team workflow: separated contexts, bounded peers
 
-```bash
-herdr agent start reviewer --kind codex --pane <returned-pane-id> -- <agent-args...>
-```
+Use progressive spawning. Do not open all helper panes up front unless the user explicitly requests a fixed layout.
 
-A successful `agent start` returns only after Herdr detects the expected agent in the same pane and considers it ready for interactive input. If the agent is blocked during startup, the command returns `agent_not_ready` immediately but keeps the name available for `agent read` and `agent send-keys`. Wait until the agent becomes idle before prompting it. Startup defaults to a 30-second timeout.
+### Phase A — Architect peer (optional)
 
-Submit work through the agent surface:
+Start a separate architect peer only when independent planning context adds value beyond the current GJC session's own planner/architect routing.
 
-```bash
-herdr agent prompt reviewer "Review the current diff and report only actionable findings." --wait --timeout 120000
-```
+Its contract is:
 
-`agent prompt` honors the pane's live bracketed-paste mode and sends text followed by encoded Enter as one ordered submission. It reports successful submission only after both have been written; that alone does not prove the agent started a turn. For Codex on Windows, Herdr sends a paste boundary before Enter so submission does not depend on prompt size. It rejects an agent already waiting at an approval or question dialog with `agent_blocked` before sending any input. Inspect the blocked UI and ask the user before answering it. For normal agent work, `--wait` is enough: it waits for the first settled `idle`, `done`, or `blocked` state. Do not repeat those defaults with `--until`.
+- analyze the user's actual request and current repository state;
+- identify constraints, affected areas, acceptance criteria, and a concrete implementation sequence;
+- call out uncertainties that materially affect implementation;
+- do **not** modify files unless the coordinator explicitly assigns implementation work.
 
-With `--wait`, a prompt sent from a non-working state must produce observed `working` or `blocked` activity. After submission, Herdr waits up to five seconds for that activity; unrelated `idle`, `done`, or session changes do not satisfy this gate. It returns `agent_prompt_stalled` if no activity is observed, or `timeout` if the caller's timeout expires first. The caller timeout includes submission time. Without a timeout, the settled-state wait is indefinite after activity is observed. This wait tracks lifecycle state, not an individual turn; if the agent is already working, completion of the active turn may satisfy it.
+Use `daily` unless the planning problem is complex/risky enough to justify `max-quality`, or the user selected another preset.
 
-Use `--until` only for a state-specific workflow, such as waiting for an already-running agent to request input:
+The coordinator must inspect the architect's actual result before dispatching implementation. Do not tell another agent that a plan was approved unless that approval was actually observed.
 
-```bash
-herdr agent wait reviewer --until blocked --timeout 120000
-```
+### Phase B — Builder peer (optional)
 
-Without `--until`, standalone `agent wait` uses the same settled-state defaults as `agent prompt --wait`.
+Use a separate builder when the user asked to delegate implementation to another pane, when isolated context is useful, or when the coordinator should remain free to supervise. Otherwise the current GJC session may implement directly.
 
-Use logical keys for interactive agent UI controls:
+Give the builder a compact handoff containing:
 
-```bash
-herdr agent send-keys reviewer esc
-herdr agent send-keys reviewer ctrl+c
-```
+- original user goal and non-negotiable constraints;
+- absolute working directory;
+- relevant plan decisions, not the architect's whole transcript;
+- acceptance criteria;
+- files/areas that are in scope and important exclusions;
+- required tests or verification evidence.
 
-Herdr validates all keys before writing any bytes. Read the result through the resolved agent:
+Default to `daily`; use `max-quality` for unusually difficult/high-risk implementation when justified or requested. The builder owns implementation and repair and must inspect the repository itself instead of trusting stale copied context.
 
-```bash
-herdr agent get reviewer
-herdr agent read reviewer --source recent-unwrapped --lines 120
-```
+### Phase C — Reviewer peer
 
-If a wait fails or returns `blocked`, inspect `agent get` and `agent read` before deciding what input to send. A timeout or stalled response does not prove the prompt was never delivered; do not blindly submit it again. Use the pane surface only when raw terminal control is intentional.
+A separate reviewer is the highest-value default peer because it adds independent context after implementation. Review the **result**, not the builder's self-summary.
 
-## Run an ordinary command in another pane
+Give the reviewer:
 
-Create a sibling pane with the same geometry rule, preserve the caller's working directory, and keep user focus unchanged:
+- original goal and acceptance criteria;
+- relevant architectural decisions;
+- current git diff / changed files;
+- test or verification evidence;
+- any known risks that still need independent checking.
 
-```bash
-herdr pane split --current --direction right --cwd "$PWD" --no-focus
-```
+Choose the reviewer preset for independence and quality, not because “reviewer = a particular preset”. For ordinary review `daily` may be sufficient. For difficult/high-risk review prefer `max-quality`. When an intentionally different composition is important, use another live profile such as `antigravity` only after confirming that its current chain is meaningfully different from the authoring path.
 
-Read the new pane ID from `.result.pane.pane_id`, then run and inspect the command:
+The reviewer must inspect actual repository evidence and report actionable findings with severity/rationale. Do not ask it to redo the whole implementation unless diagnosis requires it.
 
-```bash
-herdr pane run <returned-pane-id> "just test"
-herdr pane wait-output <returned-pane-id> --match "test result" --timeout 120000
-herdr pane read <returned-pane-id> --source recent-unwrapped --lines 120
-```
+### Repair loop
 
-`pane run` atomically sends command text and Enter. `pane wait-output` searches the selected snapshot immediately, so output that already exists can match. Use `--match <text>` for a literal substring or `--regex <pattern>` for a Rust regular expression. Omitting `--timeout` allows an indefinite wait.
+If the reviewer finds material issues:
 
-Use the read source that matches the task:
+1. Coordinator validates that each finding is relevant to the user's scope.
+2. Send only actionable findings and necessary evidence back to the builder/author.
+3. Builder/author fixes and reruns relevant verification.
+4. Reviewer re-checks the new diff/evidence.
 
-- `visible`: the currently rendered viewport.
-- `recent`: recent rendered output, including soft wraps.
-- `recent-unwrapped`: recent output with soft wraps joined; prefer it for logs and transcripts.
-- `detection`: the plain-text bottom-buffer snapshot used for agent detection.
+Default to at most **two repair/re-review rounds**. If material issues remain after that, stop the loop and report the unresolved blockers instead of creating an unbounded agent ping-pong.
 
-Use `--format ansi` when colors and terminal styling are evidence. Otherwise use text.
+Skip peers that do not add value. Examples:
 
-`--lines` asks Herdr for more rows from the pane's available screen and host scrollback. Alternate-screen rows do not enter ordinary host scrollback. For supported idle agents, Herdr can collect application-owned history and restore the viewport afterward, but not every application or response can be recovered this way.
+- review-only request → one reviewer peer;
+- clear small implementation → current session or one builder, then reviewer only if risk warrants it;
+- architecture request with no code changes → current GJC internal roles first; separate architect peer only for an independent second plan;
+- large/risky feature → optional architect peer → implementation → reviewer peer;
+- user explicitly wants multiple agents/presets → honor that topology while preserving the same handoff and approval boundaries.
 
-If a larger recent read still does not reveal the completed response, ask the agent to write it as Markdown in a temporary directory and reply only with the file path, then read that file on the same machine. Use this only as a fallback; do not request file output in the initial prompt.
+## 6. Handoff and shared-state rules
 
-## Safety and coordination rules
+Treat the repository and observed tool output as shared truth; treat pane transcripts as ephemeral conversation.
 
-- Use `--no-focus` for background work unless the user asked to switch context.
-- Use `--current`, an explicit pane ID, or a unique agent name. Do not rely on another client's focused pane.
-- Parse IDs from JSON responses. Do not derive them from sidebar order or examples.
-- Do not close workspaces, tabs, panes, or sessions you did not create unless the user explicitly asked. `workspace close --group` closes the primary workspace and its linked worktree workspaces; never add it merely to bypass `workspace_group_close_required`.
-- Use `--trust-repository` only after the user has verified the repository. It grants per-request Git trust; it is not a routine retry for a failed worktree command.
-- Client and server versions can differ after an update. Check `herdr status` before relying on new server features. A missing method is not permission to stop or upgrade a server.
-- Never run `herdr server stop` from an active session unless the user explicitly intends to stop the server and its pane processes.
-- Never kill the main Herdr process. Use named test sessions for experiments that need an isolated server.
-- CLI server errors are JSON on stderr with exit status 1. CLI syntax errors exit with status 2.
+- Keep handoffs concise and task-scoped. Do not paste full previous transcripts when a decision summary and file references are sufficient.
+- Do not rely on pane scrollback as durable memory. If a response is too large or alternate-screen behavior prevents complete capture, ask that agent to write the complete result to a temporary Markdown file and return only its path, then read that file directly.
+- Prefer temporary handoff artifacts outside the repository for transient coordination. Do not create committed `.ai/`, `.gjc/`, or workflow artifacts unless the user or repository convention explicitly calls for them.
+- Before a downstream agent acts, tell it to re-read relevant files/diff so it can detect drift since the previous handoff.
+- Preserve provenance in the final report: which pane/session authored or reviewed the work, which preset each used, and whether cross-family independence was actually verified when that mattered.
+
+## 7. Coordination and approval boundaries
+
+- A helper's output is advice/evidence, not new user authorization.
+- Never let one agent approve another agent's privilege escalation, destructive operation, external send, credential action, merge, push, or other user-gated step.
+- If any helper becomes `blocked` on an approval/question UI, inspect the UI and return the decision to the user when authorization is required.
+- Do not turn Herdr availability into permission to launch unrelated agents or parallel work.
+- Do not silently change model settings, install missing models, alter subscriptions, or modify the live preset bundle merely to make a workflow fit this skill.
+
+## 8. Completion criteria
+
+A peer/team workflow is complete only when the coordinator has verified the requested outcome from repository/process evidence, not merely because all panes appear idle.
+
+Before reporting completion:
+
+1. verify expected files/diff or requested non-code output;
+2. verify required tests/checks and record failures honestly;
+3. inspect the final reviewer result when review was part of the workflow;
+4. state unresolved findings, blocked approvals, missing preset/model independence, or unverified assumptions;
+5. avoid claiming consensus when agents merely produced compatible-looking outputs.
+
+## Invocation examples
+
+Single helper:
+
+`/skill:herdr 오른쪽 창에 GJC daily를 띄워서 현재 변경사항을 리뷰해줘`
+
+Team workflow without hardcoded role/preset coupling:
+
+`/skill:herdr 이 기능을 팀으로 설계하고 구현한 다음 독립 리뷰해서 필요한 수정까지 반영해줘`
+
+Explicit profile topology:
+
+`/skill:herdr 구현은 daily로 하고, 최종 리뷰는 live 모델 구성이 다르면 antigravity peer로 검증해줘`
+
+Use Herdr only for the explicitly requested work; its availability alone is not permission to launch agents.

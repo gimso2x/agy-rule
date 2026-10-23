@@ -27,6 +27,9 @@ python3 ~/my-wiki/gjc-config/skills/insane-review/bin/pack_and_ask.py check-env 
   --profile-dir "$HOME/.local/state/mygjc/insane-review-profile"
 ```
 
+- launcher는 symlink 경로를 거부한다(`unsafe directory`). omp처럼 스킬 디렉터리가
+  symlink로 연결된 환경에서도 항상 `~/my-wiki/gjc-config/skills/insane-review/bin/pack_and_ask.py`
+  절대경로로 실행한다.
 - `mygjc-cdp start insane-review`는 chatgpt 역할이므로 기동 시
   `https://chatgpt.com/` 탭을 함께 연다(fresh 프로필의 `no_chatgpt_page` 방지).
 - `check-env`의 login/model 관측 분기표:

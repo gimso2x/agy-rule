@@ -9,3 +9,12 @@ scratch/
 *.env
 *.local
 credentials.json
+
+# Python cache
+__pycache__/
+*.py[cod]
+*$py.class
+
+# 외부 스킬 (라이선스상 재배포 금지 → install.sh가 원본에서 받아옴)
+skills/transitions-dev/
+skills/transitions-polish/

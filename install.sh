@@ -28,6 +28,22 @@ for rule_file in "${SCRIPT_DIR}/rules/"*.md; do
 done
 echo "   ✅ 18개 규칙 파일이 ${TARGET_HOME}/.agents/rules/ 에 링크되었습니다."
 
+# 2-1. 외부 스킬 가져오기 (라이선스상 저장소에 포함하지 않고 원본에서 받아옴)
+echo "📦 [외부] 외부 스킬(transitions.dev) 가져오기..."
+EXT_TMP="$(mktemp -d)"
+if git clone --depth 1 --quiet https://github.com/Jakubantalik/transitions.dev.git "${EXT_TMP}/transitions.dev"; then
+  for ext_skill in transitions-dev transitions-polish; do
+    if [[ -d "${EXT_TMP}/transitions.dev/skills/${ext_skill}" ]]; then
+      rm -rf "${SCRIPT_DIR}/skills/${ext_skill}"
+      cp -r "${EXT_TMP}/transitions.dev/skills/${ext_skill}" "${SCRIPT_DIR}/skills/${ext_skill}"
+      echo "   - [외부 스킬] ${ext_skill} 갱신 완료"
+    fi
+  done
+else
+  echo "   ⚠️  transitions.dev 클론 실패 — 기존 로컬 사본이 있으면 그대로 사용합니다."
+fi
+rm -rf "${EXT_TMP}"
+
 # 3. 스킬(Skills) 8종 동기화
 echo "📦 [2/4] 정예 스킬(Skills) 8종 동기화..."
 for skill_dir in "${SCRIPT_DIR}/skills/"*; do
