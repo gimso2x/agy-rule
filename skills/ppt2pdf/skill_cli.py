@@ -7,8 +7,8 @@ Public contract:
   ppt2pdf status
   ppt2pdf cleanup
 
-Unknown first tokens are treated as run input. The legacy ppt2pdf.py remains the
-capture engine; Markdown conversion is opt-in at this wrapper boundary.
+Unknown first tokens are treated as run input. This wrapper only captures PDF/PNGs;
+the invoking agent completes Markdown by directly reading the images (SKILL.md).
 """
 from __future__ import annotations
 
@@ -32,16 +32,11 @@ def split_command(argv: list[str]) -> tuple[str, list[str]]:
 
 
 def cmd_run(argv: list[str]) -> int:
-    markdown = False
-    forwarded: list[str] = []
-    for arg in argv:
-        if arg == "--markdown":
-            markdown = True
-        else:
-            forwarded.append(arg)
-
-    if not markdown and "--no-markdown" not in forwarded:
-        forwarded.append("--no-markdown")
+    markdown = "--no-markdown" not in argv
+    forwarded = [arg for arg in argv if arg not in {"--markdown", "--no-markdown"}]
+    # Never invoke the legacy external-proxy converter. Markdown belongs to the
+    # invoking agent, including when --markdown was explicitly requested.
+    forwarded.append("--no-markdown")
 
     original_argv = sys.argv
     try:
@@ -49,6 +44,9 @@ def cmd_run(argv: list[str]) -> int:
         engine.main()
     finally:
         sys.argv = original_argv
+    if markdown:
+        print("ppt2pdf: capture complete; invoking agent must now transcribe slide-*.png "
+              "into <document>.md directly, following SKILL.md.", file=sys.stderr)
     return 0
 
 
