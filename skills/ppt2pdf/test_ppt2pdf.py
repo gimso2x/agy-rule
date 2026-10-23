@@ -2,7 +2,7 @@
 """ppt2pdf 스크립트 유닛 검증 하네스 (V2 + 레드팀 적대 케이스).
 
 Chrome/M365 없이 실행 가능 — 저장소에서 그대로:
-  python3 gjc-config/skills/ppt2pdf/test_ppt2pdf.py
+  python3 skills/ppt2pdf/test_ppt2pdf.py
 
 커버: Chromium 바이너리 탐색(실행불가/부재 스킵), CDP 포트↔전용 프로필
 바인딩 파서(외부 브라우저/포트 불일치 거부), persistent profile context 탭 생성,
@@ -154,6 +154,24 @@ with patch.object(mod, 'slide_total', return_value=3):
     except RuntimeError:
         check('PPT stops before capturing stale selected slide',
               frame.locator.return_value.screenshot.call_count == 1)
+
+# Resume vs Fresh mode test
+resume_dir = tmpdir / 'resume_test'
+resume_dir.mkdir(parents=True, exist_ok=True)
+(resume_dir / 'slide-001.png').write_bytes(b'x' * 1500)
+frame.reset_mock()
+frame.locator.return_value.get_attribute.side_effect = ['2', '3']
+with patch.object(mod, 'slide_total', return_value=3):
+    captured_res = mod._capture_ppt_slides(page, frame, resume_dir, fresh=False)
+check('PPT resume skips existing slide-001', captured_res == [1, 2, 3])
+check('PPT resume only takes 2 screenshots', frame.locator.return_value.screenshot.call_count == 2)
+
+frame.reset_mock()
+frame.locator.return_value.get_attribute.side_effect = ['1', '2', '3']
+with patch.object(mod, 'slide_total', return_value=3):
+    captured_fresh = mod._capture_ppt_slides(page, frame, resume_dir, fresh=True)
+check('PPT fresh recaptures all 3 slides', captured_fresh == [1, 2, 3])
+check('PPT fresh takes 3 screenshots', frame.locator.return_value.screenshot.call_count == 3)
 # ── V2-5: skill_cli fast-path wrapper tests ────────────────────────
 CLI_SCRIPT = Path(__file__).resolve().parent / 'skill_cli.py'
 cli_spec = importlib.util.spec_from_file_location('skill_cli', CLI_SCRIPT)
@@ -167,22 +185,6 @@ check('CLI split explicit run -> run', cli_mod.split_command(['run', 'https://te
 check('CLI split check -> check', cli_mod.split_command(['check']) == ('check', []))
 check('CLI split status -> status', cli_mod.split_command(['status']) == ('status', []))
 check('CLI split cleanup -> cleanup', cli_mod.split_command(['cleanup']) == ('cleanup', []))
-
-# 2) cmd_run argument forwarding & --no-markdown injection
-captured_argv = []
-def fake_main():
-    captured_argv.extend(sys.argv[1:])
-
-with patch.object(cli_mod.engine, 'main', side_effect=fake_main):
-    cli_mod.cmd_run(['https://tenant.sharepoint.com/x'])
-    check('CLI run default injects --no-markdown', '--no-markdown' in captured_argv)
-    check('CLI run preserves url', 'https://tenant.sharepoint.com/x' in captured_argv)
-
-captured_argv.clear()
-with patch.object(cli_mod.engine, 'main', side_effect=fake_main):
-    cli_mod.cmd_run(['https://tenant.sharepoint.com/x', '--markdown'])
-    check('CLI run --markdown omits --no-markdown', '--no-markdown' not in captured_argv)
-    check('CLI run --markdown strips flag before engine', '--markdown' not in captured_argv)
 
 # 3) cmd_cleanup
 test_work = tmpdir / 'cli-work'

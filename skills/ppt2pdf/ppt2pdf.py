@@ -1,8 +1,10 @@
 #!/usr/bin/env python3
 """ppt2pdf — SharePoint/OneDrive PowerPoint 웹 문서를 PDF로 추출.
 
-링크 하나로: 전용 WSL Chromium(Playwright 번들, 기본 포트 9223 — PPT2PDF_PORT로
-변경, 전용 프로필 ~/.local/state/mygjc/ppt2pdf-profile)에서 새 탭으로 열고,
+링크 하나로 브라우저에서 새 탭으로 열고 (두 모드 공존):
+  - 기본(Ego): Windows Chrome chrome-agent, CDP 9222 — 로그인된 M365 세션 재사용
+  - 전용(dedicated): PPT2PDF_PORT=9223 — WSL Playwright Chromium, 전용 프로필
+    ~/.local/state/mygjc/ppt2pdf-profile (PPT2PDF_PROFILE로 프로필 변경 가능)
 편집기에서 번호별 슬라이드 표면 캡처 → img2pdf 조립.
 
 M365 로그인은 브라우저 창에서 수동 로그인 — 스크립트가 감지 시 최대 5분 대기하다
@@ -35,6 +37,9 @@ def get_default_profile() -> Path:
     env_p = os.environ.get('PPT2PDF_PROFILE')
     if env_p:
         return Path(env_p)
+    # 전용 모드(9222 외 포트, 예: 9223): Ego 프로필을 건드리지 않고 전용 프로필 사용
+    if PORT != 9222:
+        return Path.home() / '.local' / 'state' / 'mygjc' / 'ppt2pdf-profile'
     # Windows C:\chrome-agent (WSL 마운트 경로)
     c_agent = Path('/mnt/c/chrome-agent')
     if c_agent.exists():
@@ -85,7 +90,12 @@ def pick_chromium(paths):
 
 
 def find_chromium():
-    """Chrome(Windows chrome.exe 또는 로컬/Playwright 번들) 탐색."""
+    """Chrome(Windows chrome.exe 또는 로컬/Playwright 번들) 탐색. 전용 모드(9222 외 포트)는 Playwright 번들 우선."""
+    if PORT != 9222:
+        bundled = pick_chromium(sorted(Path.home().glob(
+            '.cache/ms-playwright/chromium-*/chrome-linux*/chrome')))
+        if bundled is not None:
+            return bundled
     win_chrome = Path('/mnt/c/Program Files/Google/Chrome/Application/chrome.exe')
     if win_chrome.is_file() and os.access(win_chrome, os.X_OK):
         return win_chrome
@@ -151,6 +161,19 @@ def acquire_run_lock():
     return lk
 
 
+def browser_env():
+    """비대화형 셸은 DISPLAY/WAYLAND_DISPLAY가 비어 있을 수 있음 — WSLg 기본값으로 보강."""
+    env = dict(os.environ)
+    wslg = Path('/mnt/wslg')
+    if wslg.is_dir():
+        if not env.get('DISPLAY') and Path('/tmp/.X11-unix/X0').exists():
+            env['DISPLAY'] = ':0'
+        wayland = wslg / 'runtime-dir' / 'wayland-0'
+        if not env.get('WAYLAND_DISPLAY') and wayland.exists():
+            env['WAYLAND_DISPLAY'] = str(wayland)  # 절대경로 — XDG_RUNTIME_DIR 무관
+    return env
+
+
 def ensure_browser():
     """브라우저 확보: 살아 있으면 재사용, 아니면 chrome-agent(또는 Playwright Chromium) 기동."""
     if chrome_alive():
@@ -161,7 +184,7 @@ def ensure_browser():
     if exe is None:
         sys.exit('Chrome/Chromium 없음 — 브라우저 설치 또는 Wbrowser 확인 후 재시도')
 
-    # Windows Chrome 실행 경로인 경우
+    # Windows Chrome 실행 경로인 경우 (Ego / chrome-agent, 기본 CDP 9222)
     if str(exe).startswith('/mnt/c'):
         udd = 'C:\\chrome-agent' if str(PROFILE).startswith('/mnt/c/chrome-agent') else str(PROFILE)
         cmd = [
@@ -174,13 +197,7 @@ def ensure_browser():
         log('Windows Chrome(chrome-agent) 기동...')
         subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
     else:
-        if 'DISPLAY' not in os.environ and 'WAYLAND_DISPLAY' not in os.environ:
-            if Path('/tmp/.X11-unix/X0').exists():
-                os.environ['DISPLAY'] = ':0'
-            elif Path('/tmp/.X11-unix/X100').exists():
-                os.environ['DISPLAY'] = ':100'
-            else:
-                os.environ['DISPLAY'] = ':0'
+        # 로컬 Chromium — 전용 프로필(기본 9223 모드: PPT2PDF_PORT=9223)
         PROFILE.mkdir(mode=0o700, parents=True, exist_ok=True)
         os.chmod(PROFILE, 0o700)
         subprocess.Popen([str(exe), '--remote-debugging-address=127.0.0.1',
@@ -188,8 +205,7 @@ def ensure_browser():
                           '--user-data-dir=%s' % PROFILE,
                           '--no-first-run', '--no-default-browser-check'],
                          stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-                         start_new_session=True)
-
+                         env=browser_env(), start_new_session=True)
     for _ in range(40):
         time.sleep(1)
         if chrome_alive():
@@ -356,7 +372,7 @@ def run_ppt2md(md_script: Path, out_pdf: Path) -> None:
         subprocess.run([sys.executable, str(md_script), str(out_pdf)], check=True)
 
 
-def _capture_ppt_slides(pg, fr, work_dir):
+def _capture_ppt_slides(pg, fr, work_dir, fresh=False):
     """Capture every editor slide, including slides omitted by a slideshow."""
     total = slide_total(fr)
     if total is None or not 1 <= total <= 300:
@@ -367,7 +383,7 @@ def _capture_ppt_slides(pg, fr, work_dir):
     seq = []
     for number in range(1, total + 1):
         target_file = work_dir / ('slide-%03d.png' % number)
-        if target_file.exists() and target_file.stat().st_size > 1000:
+        if not fresh and target_file.exists() and target_file.stat().st_size > 1000:
             seq.append(number)
             log('슬라이드 %d/%d 기존 캡처 재사용' % (number, total))
             continue
@@ -429,6 +445,8 @@ def main():
     ap.add_argument('--keep-tab', action='store_true', help='작업 후 탭 유지')
     ap.add_argument('--reuse', action='store_true',
                     help='기존 SharePoint 탭 재사용 (링크 생략과 동일 — 로그인·재시도 후 재실행용)')
+    ap.add_argument('--fresh', action='store_true',
+                    help='기존 캡처본 재사용 없이 전체 재캡처 (문서 개정 업데이트용)')
     ap.add_argument('--no-markdown', action='store_true',
                     help='Markdown 생성(ppt2md) 생략 (PDF + 슬라이드 PNG만 생성)')
     args = ap.parse_args()
@@ -439,7 +457,7 @@ def main():
 
     ensure_browser()
     WORK.mkdir(exist_ok=True)
-    if not (args.reuse or not args.url):
+    if args.fresh or not (args.reuse or not args.url):
         for old in WORK.glob('slide-*.png'):
             old.unlink()
 
@@ -515,7 +533,7 @@ def main():
             log('Word 문서 감지 — 페이지 단위 캡처 모드 시작')
             seq = capture_word_pages(b, pg, fr, WORK)
         else:
-            seq = _capture_ppt_slides(pg, fr, WORK)
+            seq = _capture_ppt_slides(pg, fr, WORK, fresh=args.fresh)
 
         if not seq:
             log('캡처 실패 — 0장')
