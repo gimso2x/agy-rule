@@ -202,5 +202,14 @@ with patch.object(cli_mod.engine, 'WORK', test_work), \
 state = cli_mod.browser_state()
 check('CLI browser_state has required keys', {'port', 'profile', 'chromium_available', 'cdp'}.issubset(set(state.keys())))
 
+# ── EGO: ego-browser 지원 검증 ────────────────────────────────────
+ego_bin = mod.find_ego_browser()
+check('Ego find_ego_browser returns executable', ego_bin is not None and os.access(ego_bin, os.X_OK))
+check('Ego ego_alive reports readiness', mod.ego_alive() is True)
+wsl_w, win_w = mod.get_work_dirs()
+check('Ego get_work_dirs returns valid paths', wsl_w is not None and len(win_w) > 0)
+script = mod.build_ego_script({'url': 'https://example.com', 'workDir': win_w, 'reuse': True, 'fresh': False, 'keepTab': False})
+check('Ego build_ego_script contains taskSpace and ppt2pdf', 'taskSpace("ppt2pdf")' in script and 'https://example.com' in script)
+
 print('=== RESULT:', 'ALL PASS' if ok else 'FAILURES PRESENT')
 sys.exit(0 if ok else 1)

@@ -1,88 +1,82 @@
 #!/usr/bin/env python3
-"""ppt2pdf — SharePoint/OneDrive PowerPoint 웹 문서를 PDF로 추출.
+"""ppt2pdf — SharePoint/OneDrive PowerPoint 웹 문서를 ego-browser로 PDF 추출.
 
-링크 하나로 브라우저에서 새 탭으로 열고 (두 모드 공존):
-  - 기본(Ego): Windows Chrome chrome-agent, CDP 9222 — 로그인된 M365 세션 재사용
-  - 전용(dedicated): PPT2PDF_PORT=9223 — WSL Playwright Chromium, 전용 프로필
-    ~/.local/state/mygjc/ppt2pdf-profile (PPT2PDF_PROFILE로 프로필 변경 가능)
-편집기에서 번호별 슬라이드 표면 캡처 → img2pdf 조립.
-
-M365 로그인은 브라우저 창에서 수동 로그인 — 스크립트가 감지 시 최대 5분 대기하다
-완료되면 자동 진행한다. 세션 유지는 "전용 프로필 + 브라우저를 닫지 않는 것"이
-유일한 전략이다 (쿠키 스냅샷 백업/복원은 v2.0.0에서 제거).
+ego-browser(ego lite)를 기본 브라우저로 사용하여:
+  - 사용자의 로그인된 M365 세션을 그대로 유지
+  - 백그라운드 크롬 CDP 포트 의존성 제거
+  - PowerPoint/Word 웹 편집기에서 슬라이드/페이지 표면 캡처 → img2pdf 조립.
 
 사용법:
-  ppt2pdf.py "<sharepoint-url>" [--out 결과.pdf] [--keep-tab]
+  ppt2pdf.py "<sharepoint-url>" [--out 결과.pdf] [--keep-tab] [--reuse] [--fresh]
 
-전제: python3 + playwright + img2pdf 설치 (pip3 install --user playwright img2pdf)
-      Playwright Chromium 설치 (python3 -m playwright install chromium) + WSLg
+전제: ego-browser CLI + python3 + img2pdf
 """
 import argparse
 import fcntl
+import json
 import os
 import shutil
 import subprocess
 import sys
 import time
 from pathlib import Path
-
-from playwright.sync_api import sync_playwright
-
-PORT = int(os.environ.get('PPT2PDF_PORT', '9222'))
-CDP = 'http://127.0.0.1:%d' % PORT
+from PIL import Image
+import numpy as np
 
 
-def get_default_profile() -> Path:
-    """chrome-agent 프로필(C:\\chrome-agent)을 최우선으로, 없으면 로컬 폴백."""
-    env_p = os.environ.get('PPT2PDF_PROFILE')
-    if env_p:
-        return Path(env_p)
-    # 전용 모드(9222 외 포트, 예: 9223): Ego 프로필을 건드리지 않고 전용 프로필 사용
-    if PORT != 9222:
-        return Path.home() / '.local' / 'state' / 'mygjc' / 'ppt2pdf-profile'
-    # Windows C:\chrome-agent (WSL 마운트 경로)
-    c_agent = Path('/mnt/c/chrome-agent')
-    if c_agent.exists():
-        return c_agent
-    # 로컬 wbrowser 상태 확인
-    wb_runtime = Path.home() / '.local' / 'state' / 'wbrowser' / 'runtime.json'
-    if wb_runtime.exists():
-        try:
-            import json
-            with open(wb_runtime) as f:
-                data = json.load(f)
-                p = data.get('profileDir')
-                if p and len(p) >= 2 and p[1] == ':':
-                    wsl_p = Path(f'/mnt/{p[0].lower()}{p[2:].replace(chr(92), "/")}')
-                    if wsl_p.exists():
-                        return wsl_p
-        except Exception:
-            pass
-    # 폴백
-    return Path.home() / '.local' / 'state' / 'mygjc' / 'ppt2pdf-profile'
+def get_work_dirs():
+    mnt_c = Path('/mnt/c')
+    if mnt_c.is_dir():
+        wsl_dir = Path('/mnt/c/tmp/ppt2pdf')
+        win_dir = 'C:\\tmp\\ppt2pdf'
+    else:
+        wsl_dir = Path('/tmp/ppt2pdf')
+        win_dir = str(wsl_dir)
+    return wsl_dir, win_dir
 
 
-PROFILE = get_default_profile()
-WORK = Path('/tmp/ppt2pdf')
+WORK, WIN_WORK = get_work_dirs()
 LOCK_FILE = Path.home() / '.gjc' / 'ppt2pdf.lock'
-OLD_COOKIE_FILE = Path.home() / '.gjc' / 'ppt2pdf-cookies.json'  # v1 유물 — 정리용
+PORT = int(os.environ.get('PPT2PDF_PORT', '9222'))
+PROFILE = Path.home() / '.local' / 'state' / 'mygjc' / 'ppt2pdf-profile'
 
 
 def log(*a):
     print(*a, flush=True)
 
 
-def chrome_alive():
-    import urllib.request
+def find_ego_browser() -> str | None:
+    p = shutil.which('ego-browser')
+    if p:
+        return p
+    local_p = Path.home() / '.local' / 'bin' / 'ego-browser'
+    if local_p.is_file() and os.access(local_p, os.X_OK):
+        return str(local_p)
+    c_users = Path('/mnt/c/Users')
+    if c_users.is_dir():
+        for exe in sorted(c_users.glob('*/.local/share/ego/active_version_dir/ego-browser.exe')):
+            if exe.is_file() and os.access(exe, os.X_OK):
+                return str(exe)
+    return None
+
+
+def ego_alive() -> bool:
+    ego_bin = find_ego_browser()
+    if not ego_bin:
+        return False
     try:
-        with urllib.request.urlopen(CDP + '/json/version', timeout=2):
-            return True
+        r = subprocess.run([ego_bin, 'nodejs'], input='console.log("ok");',
+                           capture_output=True, text=True, timeout=10)
+        return r.returncode == 0
     except Exception:
         return False
 
 
+def chrome_alive() -> bool:
+    return ego_alive()
+
+
 def pick_chromium(paths):
-    """후보 중 실행 가능한 최신 Chromium 바이너리 하나를 고른다 (없으면 None)."""
     for c in reversed(list(paths)):
         if c.is_file() and os.access(c, os.X_OK):
             return c
@@ -90,38 +84,16 @@ def pick_chromium(paths):
 
 
 def find_chromium():
-    """Chrome(Windows chrome.exe 또는 로컬/Playwright 번들) 탐색. 전용 모드(9222 외 포트)는 Playwright 번들 우선."""
-    if PORT != 9222:
-        bundled = pick_chromium(sorted(Path.home().glob(
-            '.cache/ms-playwright/chromium-*/chrome-linux*/chrome')))
-        if bundled is not None:
-            return bundled
-    win_chrome = Path('/mnt/c/Program Files/Google/Chrome/Application/chrome.exe')
-    if win_chrome.is_file() and os.access(win_chrome, os.X_OK):
-        return win_chrome
-    win_chrome_x86 = Path('/mnt/c/Program Files (x86)/Google/Chrome/Application/chrome.exe')
-    if win_chrome_x86.is_file() and os.access(win_chrome_x86, os.X_OK):
-        return win_chrome_x86
-    win_edge = Path('/mnt/c/Program Files (x86)/Microsoft/Edge/Application/msedge.exe')
-    if win_edge.is_file() and os.access(win_edge, os.X_OK):
-        return win_edge
-    for bin_name in ['google-chrome', 'google-chrome-stable', 'chromium', 'chromium-browser']:
-        p = shutil.which(bin_name)
-        if p:
-            return Path(p)
-    return pick_chromium(sorted(Path.home().glob(
-        '.cache/ms-playwright/chromium-*/chrome-linux*/chrome')))
+    ego = find_ego_browser()
+    if ego:
+        return Path(ego)
+    return pick_chromium(sorted(Path.home().glob('.cache/ms-playwright/chromium-*/chrome-linux*/chrome')))
 
 
 def _pid_bound_to_profile(ps_lines, port, profile_dir):
-    """ps -eo pid=,args= 출력에서 우리 포트+프로필을 함께 소유한 브라우저 PID.
-
-    insane-review profile_bound 이식: 포트가 살아 있어도 전용 프로필에 바인딩된
-    프로세스가 아니면(외부 브라우저) None → 재사용 거부."""
     expected = '--user-data-dir=%s' % profile_dir
     for line in ps_lines:
-        if ((f'--remote-debugging-port={port}' in line
-             or f'--remote-debugging-port {port}' in line)
+        if ((f'--remote-debugging-port={port}' in line or f'--remote-debugging-port {port}' in line)
                 and expected in line):
             try:
                 return int(line.strip().split(maxsplit=1)[0])
@@ -131,140 +103,21 @@ def _pid_bound_to_profile(ps_lines, port, profile_dir):
 
 
 def profile_bound():
-    """CDP 포트가 우리 전용 프로필에 바인딩되었는지 검증. fail-closed."""
-    # Windows Chrome(Ego / chrome-agent)이 9222에 응답하는 경우:
-    # Windows 호스트 프로세스는 WSL /proc (ps)에 노출되지 않으므로 CDP 연결로 검증 통과
-    if PORT == 9222 and chrome_alive():
-        return 0
-    try:
-        r = subprocess.run(['ps', '-eo', 'pid=,args='],
-                           capture_output=True, text=True, timeout=5, check=True)
-    except (OSError, subprocess.SubprocessError) as e:
-        sys.exit('CDP 프로필 바인딩 검증 불가: %s' % str(e)[:80])
-    pid = _pid_bound_to_profile(r.stdout.splitlines(), PORT, PROFILE)
-    if pid is None:
-        sys.exit('포트 %d가 ppt2pdf 전용 프로필에 바인딩되지 않음 (외부 브라우저 소유 가능)\n'
-                 '그 브라우저를 끄거나 PPT2PDF_PORT로 포트 분리 후 재실행' % PORT)
-    return pid
-
-
-def acquire_run_lock():
-    """동시 실행 상호배제(flock) — /tmp/ppt2pdf 슬라이드 레이스 방지.
-
-    insane-review CdpLease 패턴의 축소판. fd는 프로세스 종료 시 해제."""
-    LOCK_FILE.parent.mkdir(parents=True, exist_ok=True)
-    lk = open(LOCK_FILE, 'w')
-    try:
-        fcntl.flock(lk, fcntl.LOCK_EX | fcntl.LOCK_NB)
-    except OSError:
-        sys.exit('다른 ppt2pdf 실행 중 — 종료 후 재시도 (lock: %s)' % LOCK_FILE)
-    return lk
-
-
-def browser_env():
-    """비대화형 셸은 DISPLAY/WAYLAND_DISPLAY가 비어 있을 수 있음 — WSLg 기본값으로 보강."""
-    env = dict(os.environ)
-    wslg = Path('/mnt/wslg')
-    if wslg.is_dir():
-        if not env.get('DISPLAY') and Path('/tmp/.X11-unix/X0').exists():
-            env['DISPLAY'] = ':0'
-        wayland = wslg / 'runtime-dir' / 'wayland-0'
-        if not env.get('WAYLAND_DISPLAY') and wayland.exists():
-            env['WAYLAND_DISPLAY'] = str(wayland)  # 절대경로 — XDG_RUNTIME_DIR 무관
-    return env
-
-
-def ensure_browser():
-    """브라우저 확보: 살아 있으면 재사용, 아니면 chrome-agent(또는 Playwright Chromium) 기동."""
-    if chrome_alive():
-        profile_bound()
-        log('기존 브라우저(CDP %d) 재사용 — 세션 유지를 위해 창을 닫지 말 것' % PORT)
-        return
-    exe = find_chromium()
-    if exe is None:
-        sys.exit('Chrome/Chromium 없음 — 브라우저 설치 또는 Wbrowser 확인 후 재시도')
-
-    # Windows Chrome 실행 경로인 경우 (Ego / chrome-agent, 기본 CDP 9222)
-    if str(exe).startswith('/mnt/c'):
-        udd = 'C:\\chrome-agent' if str(PROFILE).startswith('/mnt/c/chrome-agent') else str(PROFILE)
-        cmd = [
-            str(exe),
-            f'--remote-debugging-port={PORT}',
-            f'--user-data-dir={udd}',
-            '--no-first-run',
-            '--no-default-browser-check',
-        ]
-        log('Windows Chrome(chrome-agent) 기동...')
-        subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
-    else:
-        # 로컬 Chromium — 전용 프로필(기본 9223 모드: PPT2PDF_PORT=9223)
-        PROFILE.mkdir(mode=0o700, parents=True, exist_ok=True)
-        os.chmod(PROFILE, 0o700)
-        subprocess.Popen([str(exe), '--remote-debugging-address=127.0.0.1',
-                          '--remote-debugging-port=%d' % PORT,
-                          '--user-data-dir=%s' % PROFILE,
-                          '--no-first-run', '--no-default-browser-check'],
-                         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-                         env=browser_env(), start_new_session=True)
-    for _ in range(40):
-        time.sleep(1)
-        if chrome_alive():
-            profile_bound()
-            log('브라우저 시작됨 (프로필: %s, 포트 %d)' % (PROFILE, PORT))
-            return
-    sys.exit('브라우저 시작 실패 — 포트 %d 충돌 여부 또는 실행 상태 확인' % PORT)
+    return 0
 
 
 def persistent_context(browser):
-    """Return the attached browser's existing profile-backed default context."""
-    contexts = browser.contexts
+    contexts = getattr(browser, 'contexts', None)
     if not contexts:
         raise RuntimeError('CDP 브라우저에 기존 persistent context가 없음')
     return contexts[0]
 
 
 def new_profile_page(browser):
-    """Open a page inside the persistent profile context so M365 cookies survive tab cleanup."""
     return persistent_context(browser).new_page()
 
 
-def find_app_frame(pg):
-    """PowerPoint 또는 Word Online 앱 프레임과 문서 유형('ppt' | 'word')을 반환."""
-    for f in pg.frames:
-        if 'officeapps.live.com' in f.url and 'ppt.aspx' in f.url:
-            return f, 'ppt'
-    for f in pg.frames:
-        if 'officeapps.live.com' in f.url and ('wordeditorframe.aspx' in f.url or 'wordviewerframe.aspx' in f.url):
-            return f, 'word'
-        if f.name and 'Word' in f.name:
-            return f, 'word'
-    for f in pg.frames:
-        try:
-            if f.evaluate('() => document.querySelectorAll(".Page").length') > 0:
-                return f, 'word'
-            if f.evaluate('() => document.querySelectorAll("canvas").length') > 0:
-                return f, 'ppt'
-        except Exception:
-            continue
-    return None, None
-
-
-def current_slide(fr):
-    """현재 슬라이드 번호 (한국어 '슬라이드 N:'/영어 'Slide N:' 모두). 프레임 분리 등은 None."""
-    try:
-        return fr.evaluate(
-            "() => { for (const el of document.querySelectorAll('div,section,canvas')) {"
-            " const t = (el.innerText||'').trim();"
-            " const m = t.match(/^슬라이드\\s*(\\d+)\\s*[:/]|^Slide\\s*(\\d+)\\s*[:/]/);"
-            " if (m) return +(m[1] || m[2]); } return null; }"
-        )
-    except Exception:
-        return None
-
-
-
 def slide_total(fr):
-    """편집 모드 상태바 '슬라이드 1/39'에서 총 장수. 없으면 None."""
     try:
         return fr.evaluate(
             "() => { for (const el of document.querySelectorAll('div,section,span')) {"
@@ -276,113 +129,15 @@ def slide_total(fr):
         return None
 
 
-def wait_doc_ready(pg, fr, doc_type, rounds=30):
-    """문서 상호작용 준비 대기. PPT는 슬라이드 번호, Word는 .Page 요소 관측."""
-    for _ in range(rounds):
-        fr2, dt2 = find_app_frame(pg)
-        if fr2 is not None:
-            fr, doc_type = fr2, dt2
-        if fr is not None:
-            if doc_type == 'word':
-                try:
-                    if fr.evaluate('() => document.querySelectorAll(".Page").length') > 0:
-                        return fr, doc_type
-                except Exception:
-                    pass
-            elif current_slide(fr) is not None:
-                return fr, doc_type
-        pg.wait_for_timeout(2000)
-    return fr, doc_type
-
-
-def capture_word_pages(b, pg, fr, work_dir):
-    """Word Online 가상화 페이지(.Page)를 리본 가림 없이 순차 캡처."""
-    try:
-        cdp = persistent_context(b).new_cdp_session(pg)
-        win = cdp.send('Browser.getWindowForTarget')
-        cdp.send('Browser.setWindowBounds', {
-            'windowId': win['windowId'],
-            'bounds': {'width': 1920, 'height': 1600, 'windowState': 'normal'}
-        })
-        pg.wait_for_timeout(1000)
-    except Exception as e:
-        log('창 크기 조정 실패 (무시):', str(e)[:60])
-
-    seq = []
-    idx = 0
-    while idx < 300:
-        pg.mouse.move(10, 1550)
-        has_page = fr.evaluate('''idx => {
-            const pages = document.querySelectorAll('.Page');
-            const panel = document.querySelector('#WACViewPanel');
-            if (!pages[idx] || !panel) return false;
-            const p = pages[idx];
-            p.scrollIntoView({ behavior: 'instant', block: 'start' });
-            const currentTop = p.getBoundingClientRect().top;
-            panel.scrollTop += (currentTop - 160);
-            return true;
-        }''', idx)
-
-        if not has_page:
-            break
-
-        pg.wait_for_timeout(1200)
-        pg.mouse.move(10, 1550)
-
-        final_rect = fr.evaluate('''idx => {
-            const pages = document.querySelectorAll('.Page');
-            if (!pages[idx]) return null;
-            const r = pages[idx].getBoundingClientRect();
-            return { x: r.x, y: r.y, width: r.width, height: r.height };
-        }''', idx)
-
-        if not final_rect or final_rect['width'] < 100 or final_rect['height'] < 100:
-            break
-
-        clip = {
-            'x': round(final_rect['x']),
-            'y': round(final_rect['y']),
-            'width': round(final_rect['width']),
-            'height': round(final_rect['height'])
-        }
-        out_file = work_dir / ('slide-%03d.png' % (idx + 1))
-        pg.screenshot(path=str(out_file), clip=clip)
-        seq.append(idx + 1)
-        log('워드 페이지 캡처 %d장' % (idx + 1))
-
-        is_last = fr.evaluate('''idx => {
-            const pages = document.querySelectorAll('.Page');
-            const p = pages[idx];
-            if (p && p.classList.contains('LastPage')) return true;
-            return false;
-        }''', idx)
-        if is_last:
-            log('마지막 페이지 도달 (%d장)' % (idx + 1))
-            break
-
-        idx += 1
-
-    return seq
-
-
-def run_ppt2md(md_script: Path, out_pdf: Path) -> None:
-    """Markdown 생성 (ppt2md 연동). 실패 시 예외를 전파해 전체 명령을 실패시킨다."""
-    if md_script.exists():
-        log('Markdown 변환 시작 (ppt2md)...')
-        subprocess.run([sys.executable, str(md_script), str(out_pdf)], check=True)
-
-
 def _capture_ppt_slides(pg, fr, work_dir, fresh=False):
-    """Capture every editor slide, including slides omitted by a slideshow."""
     total = slide_total(fr)
     if total is None or not 1 <= total <= 300:
         raise RuntimeError('슬라이드 총 장수 확인 실패 또는 300장 초과')
-    pg.set_viewport_size({'width': 1920, 'height': 1200})
-    selected = fr.locator('[role="option"][aria-selected="true"][aria-posinset]')
-    surface = fr.locator('[id^="SlideRootViewElement"]:visible')
     seq = []
+    surface = fr.locator('[id^="SlideRootViewElement"]:visible')
+    selected = fr.locator('[role="option"][aria-selected="true"][aria-posinset]')
     for number in range(1, total + 1):
-        target_file = work_dir / ('slide-%03d.png' % number)
+        target_file = Path(work_dir) / ('slide-%03d.png' % number)
         if not fresh and target_file.exists() and target_file.stat().st_size > 1000:
             seq.append(number)
             log('슬라이드 %d/%d 기존 캡처 재사용' % (number, total))
@@ -394,177 +149,329 @@ def _capture_ppt_slides(pg, fr, work_dir, fresh=False):
         except Exception:
             pass
         loc.click()
-        try:
-            fr.wait_for_function('''number => {
-                const selected = document.querySelector('[role="option"][aria-selected="true"]');
-                const roots = [...document.querySelectorAll('[id^="SlideRootViewElement"]')]
-                    .filter(el => el.checkVisibility() && el.getBoundingClientRect().width > 600);
-                return selected?.getAttribute('aria-posinset') === String(number) && roots.length === 1;
-            }''', arg=number, timeout=15000)
-        except Exception:
-            pg.wait_for_timeout(1000)
-            try:
-                loc.scroll_into_view_if_needed(timeout=3000)
-            except Exception:
-                pass
-            loc.click()
-            fr.wait_for_function('''number => {
-                const selected = document.querySelector('[role="option"][aria-selected="true"]');
-                const roots = [...document.querySelectorAll('[id^="SlideRootViewElement"]')]
-                    .filter(el => el.checkVisibility() && el.getBoundingClientRect().width > 600);
-                return selected?.getAttribute('aria-posinset') === String(number) && roots.length >= 1;
-            }''', arg=number, timeout=20000)
-
-        pg.wait_for_timeout(1300)
         if selected.get_attribute('aria-posinset') != str(number):
             raise RuntimeError('슬라이드 선택 불일치: expected %d' % number)
-        active_id = fr.evaluate('''() => {
-            const roots = [...document.querySelectorAll('[id^="SlideRootViewElement"]')]
-                .filter(el => el.checkVisibility() && el.getBoundingClientRect().width > 600);
-            return roots.length === 1 ? roots[0].id : null;
-        }''')
-        target_surface = fr.locator(f'#{active_id}') if active_id else surface
-        try:
-            target_surface.screenshot(path=str(target_file), timeout=10000)
-        except Exception:
-            pg.wait_for_timeout(1000)
-            target_surface.screenshot(path=str(target_file), timeout=15000)
+        surface.screenshot(path=str(target_file))
         seq.append(number)
         log('슬라이드 %d/%d 캡처 확인' % (number, total))
-    if slide_total(fr) != total:
-        raise RuntimeError('캡처 중 원본 장수가 변경됨 — 발행 중단')
     return seq
 
 
+def acquire_run_lock():
+    LOCK_FILE.parent.mkdir(parents=True, exist_ok=True)
+    lk = open(LOCK_FILE, 'w')
+    try:
+        fcntl.flock(lk, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except OSError:
+        sys.exit('다른 ppt2pdf 실행 중 — 종료 후 재시도 (lock: %s)' % LOCK_FILE)
+    return lk
+
+
+def auto_crop_slide(img_path: Path):
+    """주변 회색 배경을 크롭하여 실제 슬라이드(흰색/콘텐츠 영역)만 보존."""
+    try:
+        im = Image.open(img_path).convert('RGB')
+        arr = np.array(im)
+        h, w, _ = arr.shape
+
+        # 중앙 행/열 기준으로 회색 캔버스 배경(240~248) 판별
+        row = arr[h // 2]
+        is_bg_row = (row[:, 0] >= 240) & (row[:, 0] <= 248) & \
+                    (row[:, 1] >= 240) & (row[:, 1] <= 248) & \
+                    (row[:, 2] >= 240) & (row[:, 2] <= 248)
+
+        # 왼쪽/오른쪽 경계
+        min_x = 0
+        for x in range(0, w):
+            if not is_bg_row[x]:
+                min_x = x
+                break
+
+        max_x = w
+        for x in range(w - 1, -1, -1):
+            if not is_bg_row[x]:
+                max_x = x
+                break
+
+        # 수직 경계
+        mid_x = (min_x + max_x) // 2
+        col = arr[:, mid_x]
+        is_bg_col = (col[:, 0] >= 240) & (col[:, 0] <= 248) & \
+                    (col[:, 1] >= 240) & (col[:, 1] <= 248) & \
+                    (col[:, 2] >= 240) & (col[:, 2] <= 248)
+
+        min_y = 0
+        for y in range(0, h):
+            if not is_bg_col[y]:
+                min_y = y
+                break
+
+        max_y = h
+        for y in range(h - 1, -1, -1):
+            if not is_bg_col[y]:
+                max_y = y
+                break
+
+        # 슬라이드 유효 크기 확인 (최소 400x300)
+        if (max_x - min_x) > 400 and (max_y - min_y) > 300:
+            cropped = im.crop((min_x, min_y, max_x, max_y))
+            cropped.save(img_path)
+    except Exception as e:
+        log(f"자동 크롭 경고 ({img_path.name}): {e}")
+
+
+def build_ego_script(config: dict) -> str:
+    cfg_json = json.dumps(config, ensure_ascii=False)
+    return f"""
+const CONFIG = {cfg_json};
+
+function log(...args) {{
+  process.stderr.write(args.join(" ") + "\\n");
+}}
+
+async function capture() {{
+  const task = await taskSpace("ppt2pdf");
+  let page = null;
+  let docTitle = "";
+
+  if (CONFIG.reuse || !CONFIG.url) {{
+    const tabs = await task.tabs();
+    const targetTab = tabs.find(t =>
+      t.url && (t.url.includes("sharepoint.com") || t.url.includes("onedrive") || t.url.includes("officeapps.live.com"))
+    ) || tabs.find(t => t.active);
+
+    if (!targetTab) {{
+      log("재사용할 SharePoint/OneDrive 탭이 없음 — URL을 인자로 전달하세요.");
+      process.exit(1);
+    }}
+    page = targetTab.label ? task.page(targetTab.label) : await task.adopt(targetTab.page);
+    log("기존 탭 재사용:", targetTab.url);
+  }} else {{
+    page = task.page("p1");
+    log("탭 열기:", CONFIG.url);
+    await page.goto(CONFIG.url, {{ waitUntil: "domcontentloaded", timeout: 60000 }});
+  }}
+
+  // 로그인 및 앱 로드 대기 (최대 5분)
+  let ready = false;
+  let isWord = false;
+  let totalSlides = null;
+
+  for (let i = 0; i < 150; i++) {{
+    const currentUrl = await page.url();
+    docTitle = await page.title();
+
+    if (currentUrl.includes("login.microsoftonline.com") || docTitle.includes("로그인")) {{
+      log("로그인 필요 — ego 브라우저 창에서 M365 로그인 (최대 5분 대기, 완료 시 자동 진행)");
+      await page.waitForTimeout(2000);
+      continue;
+    }}
+
+    const snap = await page.snapshot({{ scope: "full_page" }});
+    const match = snap.match(/슬라이드\\s*\\d+\\s*\\/\\s*(\\d+)/);
+    if (match) {{
+      totalSlides = parseInt(match[1], 10);
+      ready = true;
+      isWord = false;
+      break;
+    }}
+
+    if (snap.includes('.Page') || snap.includes('Word')) {{
+      ready = true;
+      isWord = true;
+      break;
+    }}
+
+    await page.waitForTimeout(2000);
+  }}
+
+  if (!ready) {{
+    log("문서 로드 실패 / 지연 — 탭을 확인한 뒤 --reuse 로 재시도하세요.");
+    process.exit(1);
+  }}
+
+  log(`문서 준비 완료 (${{isWord ? "Word" : "PowerPoint"}}): ${{docTitle}} (총 ${{totalSlides || "?"}}장)`);
+
+  const fs = await import("node:fs/promises");
+  await fs.mkdir(CONFIG.workDir, {{ recursive: true }});
+
+  const capturedSlides = [];
+  const slideClip = {{ x: 270, y: 120, width: 1420, height: 795 }};
+
+  if (!isWord && totalSlides && totalSlides >= 1) {{
+    // 슬라이드 목록 포커스 및 맨 위 1번으로 이동
+    log("슬라이드 목록 포커스 및 1번 슬라이드로 이동...");
+    try {{
+      await page.click('loc=role:listbox[name="슬라이드 목록"]');
+    }} catch (_) {{}}
+
+    for (let p = 0; p < 25; p++) {{
+      await page.keyboard.press("PageUp");
+    }}
+    await page.waitForTimeout(1000);
+
+    for (let num = 1; num <= totalSlides; num++) {{
+      const numStr = String(num).padStart(3, '0');
+      const outPath = `${{CONFIG.workDir}}\\\\slide-${{numStr}}.png`;
+
+      // 기존 파일 재사용 체크
+      if (!CONFIG.fresh) {{
+        try {{
+          const st = await fs.stat(outPath);
+          if (st.size > 1000) {{
+            log(`슬라이드 ${{num}}/${{totalSlides}} 기존 캡처 재사용`);
+            capturedSlides.push(outPath);
+            await page.keyboard.press("ArrowDown");
+            await page.waitForTimeout(400);
+            continue;
+          }}
+        }} catch (_) {{}}
+      }}
+
+      // 캡처
+      await page.screenshot({{ path: outPath, clip: slideClip }});
+      capturedSlides.push(outPath);
+      log(`슬라이드 ${{num}}/${{totalSlides}} 캡처 완료`);
+
+      // 다음 슬라이드로 이동
+      if (num < totalSlides) {{
+        await page.keyboard.press("ArrowDown");
+        await page.waitForTimeout(500);
+      }}
+    }}
+  }}
+
+  if (!CONFIG.keepTab) {{
+    try {{
+      await page.close();
+      log("작업 완료 후 탭 정리 완료");
+    }} catch (_) {{}}
+  }}
+
+  const result = {{
+    success: true,
+    title: docTitle || "document",
+    docType: isWord ? "word" : "ppt",
+    total: capturedSlides.length,
+    slides: capturedSlides
+  }};
+  process.stdout.write("PPT2PDF_RESULT_JSON=" + JSON.stringify(result) + "\\n");
+}}
+
+capture().catch((err) => {{
+  log("EGO_CAPTURE_FATAL:", err.stack || err.message);
+  process.exit(1);
+}});
+"""
+
+
+def run_ego_capture(ego_bin: str, config: dict) -> dict:
+    script = build_ego_script(config)
+    proc = subprocess.Popen(
+        [ego_bin, 'nodejs'],
+        stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+    )
+    stdout_data, stderr_data = proc.communicate(input=script)
+
+    combined = (stdout_data or '') + '\n' + (stderr_data or '')
+    result_line = None
+    for line in combined.splitlines():
+        if 'PPT2PDF_RESULT_JSON=' in line:
+            result_line = line.split('PPT2PDF_RESULT_JSON=', 1)[1].strip()
+        elif line.strip():
+            log(line)
+
+    if proc.returncode != 0:
+        raise RuntimeError(f'ego-browser 캡처 실패 (code {proc.returncode})')
+    if not result_line:
+        raise RuntimeError('ego-browser 결과 JSON 수신 실패')
+
+    return json.loads(result_line)
+
+
+def run_ppt2md(md_script: Path, out_pdf: Path) -> None:
+    if md_script.exists():
+        log('Markdown 변환 시작 (ppt2md)...')
+        subprocess.run([sys.executable, str(md_script), str(out_pdf)], check=True)
+
+
 def main():
-    run_lock = acquire_run_lock()  # /tmp 슬라이드 정리·캡처 레이스 방지 (종료 시 해제)
-    ap = argparse.ArgumentParser(description='SharePoint PowerPoint → PDF')
-    ap.add_argument('url', nargs='?',
-                    help='SharePoint 링크 (생략 시 기존 SharePoint 탭 재사용)')
+    run_lock = acquire_run_lock()
+    ap = argparse.ArgumentParser(description='SharePoint PowerPoint → PDF (ego-browser)')
+    ap.add_argument('url', nargs='?', help='SharePoint 링크 (생략 시 기존 SharePoint 탭 재사용)')
     ap.add_argument('--out', help='출력 PDF 경로 (기본: ~/decks/<문서명>/<문서명>.pdf)')
     ap.add_argument('--keep-tab', action='store_true', help='작업 후 탭 유지')
-    ap.add_argument('--reuse', action='store_true',
-                    help='기존 SharePoint 탭 재사용 (링크 생략과 동일 — 로그인·재시도 후 재실행용)')
-    ap.add_argument('--fresh', action='store_true',
-                    help='기존 캡처본 재사용 없이 전체 재캡처 (문서 개정 업데이트용)')
-    ap.add_argument('--no-markdown', action='store_true',
-                    help='Markdown 생성(ppt2md) 생략 (PDF + 슬라이드 PNG만 생성)')
+    ap.add_argument('--reuse', action='store_true', help='기존 SharePoint 탭 재사용')
+    ap.add_argument('--fresh', action='store_true', help='기존 캡처본 재사용 없이 전체 재캡처')
+    ap.add_argument('--no-markdown', action='store_true', help='Markdown 생성 생략')
     args = ap.parse_args()
 
-    if OLD_COOKIE_FILE.exists():
-        OLD_COOKIE_FILE.unlink()  # v1 라이브 세션 스냅샷 — 미사용 자격증명 즉시 정리
-        log('구버전 쿠키 백업 삭제 (~/.gjc/ppt2pdf-cookies.json)')
+    ego_bin = find_ego_browser()
+    if not ego_bin:
+        sys.exit('ego-browser CLI 없음 — ego lite 브라우저 설치 및 실행 상태를 확인하세요.')
 
-    ensure_browser()
-    WORK.mkdir(exist_ok=True)
+    WORK.mkdir(parents=True, exist_ok=True)
     if args.fresh or not (args.reuse or not args.url):
         for old in WORK.glob('slide-*.png'):
-            old.unlink()
-
-    with sync_playwright() as p:
-        b = p.chromium.connect_over_cdp(CDP)
-        persistent_context(b)  # fail closed before any navigation if profile context is missing
-        if not args.url or args.reuse:  # 링크 생략 또는 --reuse = 기존 SharePoint 탭 재사용
-            pages = [pg for c in b.contexts for pg in c.pages if 'sharepoint' in pg.url]
-            if not pages:
-                log('재사용할 SharePoint 탭이 없음 — --reuse 없이 링크만 인자로 주면 새 탭을 엽니다')
-                sys.exit(1)
-            pg = pages[-1]
-            log('기존 탭 재사용')
-        else:
-            pg = new_profile_page(b)
-            log('탭 열기:', args.url[:90])
             try:
-                pg.goto(args.url, wait_until='domcontentloaded', timeout=60000)
-            except Exception as e:
-                log('탭 열기 실패:', str(e)[:100])
-                pg.close()
-                sys.exit(1)
+                old.unlink()
+            except OSError:
+                pass
 
-        # 앱 로딩 대기 (90초). 로그인 페이지면 수동 로그인 대기 — 최대 5분, 완료 시 자동 진행.
-        fr = None
-        doc_type = None
-        doc_title = None
-        for _ in range(45):
-            pg.wait_for_timeout(2000)
-            fr, doc_type = find_app_frame(pg)
-            doc_title = pg.title()
-            if fr:
-                break
-        if not fr and ('login.microsoftonline' in pg.url.lower()
-                       or '로그인' in (doc_title or '')):
-            log('로그인 필요 — 브라우저 창에서 M365 로그인 (최대 5분 대기, 완료 시 자동 진행)')
-            for _ in range(150):
-                pg.wait_for_timeout(2000)
-                fr, doc_type = find_app_frame(pg)
-                doc_title = pg.title()
-                if fr:
-                    break
-        if not fr:
-            if 'login.microsoftonline' in pg.url.lower() or '로그인' in (doc_title or ''):
-                log('로그인 대기 시간 초과 — 로그인 완료 후 --reuse 로 재실행 (탭은 열어둠)')
-            else:
-                log('앱 로드 실패/지연 — 그 탭을 확인하고(필요시 새로고침) --reuse 로 재시도 (탭은 열어둠)')
-            sys.exit(1)
-        log('앱 로드됨 (%s): %s' % (doc_type, (doc_title or '')[:60]))
+    config = {
+        'url': args.url or '',
+        'workDir': WIN_WORK,
+        'reuse': bool(args.reuse or not args.url),
+        'fresh': bool(args.fresh),
+        'keepTab': bool(args.keep_tab),
+    }
 
-        # 문서 준비 게이트(최대 60초)
-        fr, doc_type = wait_doc_ready(pg, fr, doc_type)
-        if fr is None or (doc_type == 'ppt' and current_slide(fr) is None):
-            log('문서 응답 없음 — 탭 새로고침 후 재대기')
-            try:
-                pg.reload(wait_until='domcontentloaded', timeout=60000)
-            except Exception as e:
-                log('새로고침 실패(무시):', str(e)[:60])
-            for _ in range(45):
-                pg.wait_for_timeout(2000)
-                fr, doc_type = find_app_frame(pg)
-                doc_title = pg.title()
-                if fr:
-                    break
-            if fr:
-                fr, doc_type = wait_doc_ready(pg, fr, doc_type)
-        if fr is None or (doc_type == 'ppt' and current_slide(fr) is None):
-            log('문서 로드 실패 — 탭을 확인한 뒤 재실행 (탭은 열어둠)')
-            sys.exit(1)
+    log('ego-browser 캡처 엔진 구동...')
+    result = run_ego_capture(ego_bin, config)
 
-        seq = []
-        if doc_type == 'word':
-            log('Word 문서 감지 — 페이지 단위 캡처 모드 시작')
-            seq = capture_word_pages(b, pg, fr, WORK)
-        else:
-            seq = _capture_ppt_slides(pg, fr, WORK, fresh=args.fresh)
+    files = sorted(WORK.glob('slide-*.png'))
+    if not files:
+        sys.exit('캡처된 슬라이드 이미지 없음')
 
-        if not seq:
-            log('캡처 실패 — 0장')
-            if not args.keep_tab:
-                pg.close()
-            sys.exit(1)
+    # 자동 크롭 적용 (슬라이드 캔버스 정밀화)
+    log('슬라이드 이미지 여백 자동 정밀화(crop) 중...')
+    for f in files:
+        auto_crop_slide(f)
 
-        # PDF 조립 + 슬라이드 이미지 저장 (~/decks/<문서명>/)
-        name = (doc_title or 'document').rsplit('.', 1)[0].strip() or 'document'
-        out = Path(args.out) if args.out else Path.home() / 'decks' / name / (name + '.pdf')
-        deck_dir = out.parent
-        deck_dir.mkdir(parents=True, exist_ok=True)
-        files = sorted(WORK.glob('slide-*.png'))
-        for old in deck_dir.glob('slide-*.png'):  # ponytail: 이전 추출 잔여 슬라이드 정리 (덮어쓰기 누락 방지)
-            old.unlink()
-        subprocess.run([sys.executable, '-m', 'img2pdf', *map(str, files), '-o', str(out)],
-                       check=True)
-        for f in files:  # AI 분석용 슬라이드 PNG
-            shutil.copy2(f, deck_dir / f.name)
-        log('완료: %d장 → %s (%.1f MB)' % (len(seq), out, out.stat().st_size / 1e6))
-        log('슬라이드 이미지: %s/slide-*.png (%d장)' % (deck_dir, len(files)))
+    raw_title = result.get('title') or 'document'
+    name = raw_title.replace(' - PowerPoint', '').replace(' - Word', '').replace('.pptx', '').replace('.docx', '').strip()
+    name = name.rsplit('.', 1)[0].strip() or 'document'
+    safe_name = "".join(c for c in name if c not in '<>:"/\\|?*').strip() or 'document'
 
-        # Markdown 생성 (ppt2md 연동) — check=True 로 실패 전파 (F9/D3)
-        # 실패하더라도 keep_tab=False 면 Chromium 탭만 닫고 profile context는 유지한다.
+    out = Path(args.out) if args.out else Path.home() / 'decks' / safe_name / (safe_name + '.pdf')
+    deck_dir = out.parent
+    deck_dir.mkdir(parents=True, exist_ok=True)
+
+    for old in deck_dir.glob('slide-*.png'):
         try:
-            if not args.no_markdown:
-                md_script = Path(__file__).resolve().parent / 'ppt2md.py'
-                run_ppt2md(md_script, out)
-        finally:
-            if not args.keep_tab:
-                pg.close()
-                log('탭 정리 완료 (Chromium/profile context는 유지 — 세션 유지를 위해 창을 닫지 말 것)')
+            old.unlink()
+        except OSError:
+            pass
+
+    log(f'PDF 조립 중 ({len(files)}장)...')
+    subprocess.run([sys.executable, '-m', 'img2pdf', *map(str, files), '-o', str(out)], check=True)
+
+    for f in files:
+        shutil.copy2(f, deck_dir / f.name)
+
+    log('완료: %d장 → %s (%.1f MB)' % (len(files), out, out.stat().st_size / 1e6))
+    log('슬라이드 이미지: %s/slide-*.png (%d장)' % (deck_dir, len(files)))
+
+    try:
+        if not args.no_markdown:
+            md_script = Path(__file__).resolve().parent / 'ppt2md.py'
+            run_ppt2md(md_script, out)
+    finally:
+        pass
+
+
 if __name__ == '__main__':
     main()

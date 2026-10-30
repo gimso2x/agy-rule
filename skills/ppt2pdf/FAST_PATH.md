@@ -22,19 +22,19 @@ ppt2pdf "https://tenant.sharepoint.com/..."
 
 ## run
 
-Default `run` means: open/reuse the dedicated M365 browser, wait for manual login only when necessary, capture the document, produce PDF + page/slide PNG artifacts, and then — in the same turn, without asking — have the agent transcribe `~/decks/<document>/slide-*.png` into `~/decks/<document>/<document>.md` (parallel subagents for decks over 15 slides: max 3 per wave, each explicitly on `gimso2xproxy/glm-5.3-flash`, abort fan-out on any 429; see SKILL.md "Direct Markdown Conversion").
+Default `run` means: open/reuse the dedicated M365 browser, wait for manual login only when necessary, capture the document, produce PDF + page/slide PNG artifacts, and then — in the same turn, without asking — have the agent transcribe `~/decks/<document>/slide-*.png` into `~/decks/<document>/<document>.md` (parallel subagents for decks over 15 slides: `invoke_subagent` with `Model: 'flash'`, max 3 per wave, sliding-window context for slide continuity, abort on 429; see SKILL.md "Direct Markdown Conversion").
 
-Markdown is processed directly by the agent (never `gimso2xproxy`, `--markdown`, or external proxies). Skip it only when the user explicitly opts out (e.g. "PDF만", "마크다운 없이").
+Markdown is processed directly by the agent in Antigravity (never `gimso2xproxy`, external proxies, or legacy scripts). Skip it only when the user explicitly opts out (e.g. "PDF만", "마크다운 없이").
 
 A Markdown failure must not discard the already-produced PDF/PNGs; report it separately.
 
 ## check
 
-Perform read-only readiness checks: Playwright/Chromium, img2pdf, Ego browser (chrome-agent)/CDP 9222 ownership (or dedicated profile/CDP 9223 when `PPT2PDF_PORT=9223`), and observable M365/browser prerequisites. Do not navigate to a new document or send images externally.
+Perform read-only readiness checks: `ego-browser` CLI, img2pdf, and observable M365/ego profile prerequisites. Do not navigate to a new document or send images externally.
 
 ## status
 
-Report the dedicated ppt2pdf browser/CDP/profile state and whether a reusable SharePoint/OneDrive tab is observable. Do not mutate browser/session state.
+Report the `ego-browser` CLI availability, user profiles, and active task space state. Do not mutate browser/session state.
 
 ## cleanup
 

@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import subprocess
 import sys
 from pathlib import Path
 
@@ -51,22 +52,35 @@ def cmd_run(argv: list[str]) -> int:
 
 
 def browser_state() -> dict[str, object]:
-    alive = engine.chrome_alive()
+    ego_bin = engine.find_ego_browser()
+    ego_ok = engine.ego_alive() if ego_bin else False
+
+    profiles_info = []
+    if ego_ok and ego_bin:
+        try:
+            r = subprocess.run([ego_bin, 'nodejs'], input='console.log(JSON.stringify(await profiles()));',
+                               capture_output=True, text=True, timeout=5)
+            for line in (r.stdout + r.stderr).splitlines():
+                if line.strip().startswith('['):
+                    profiles_info = json.loads(line.strip())
+                    break
+        except Exception:
+            pass
+
     state: dict[str, object] = {
+        "engine": "ego-browser",
+        "ego_browser": ego_bin,
+        "ego_available": ego_ok,
+        "profiles": profiles_info,
+        "work_dir": str(engine.WORK),
+        # 하위 호환성 키
         "port": engine.PORT,
         "profile": str(engine.PROFILE),
-        "profile_exists": engine.PROFILE.is_dir() and not engine.PROFILE.is_symlink(),
-        "chromium_available": engine.find_chromium() is not None,
-        "cdp": "down",
-        "pid": None,
+        "profile_exists": True,
+        "chromium_available": ego_bin is not None,
+        "cdp": "ready" if ego_ok else "down",
+        "pid": 0 if ego_ok else None,
     }
-    if alive:
-        try:
-            state["pid"] = engine.profile_bound()
-            state["cdp"] = "ready"
-        except SystemExit as exc:
-            state["cdp"] = "foreign-or-invalid"
-            state["reason"] = str(exc)
     return state
 
 
@@ -77,10 +91,8 @@ def cmd_check() -> int:
         img2pdf=importlib.util.find_spec("img2pdf") is not None,
     )
     state["ready"] = bool(
-        state["playwright"]
-        and state["img2pdf"]
-        and state["chromium_available"]
-        and state["cdp"] in {"ready", "down"}
+        state["img2pdf"]
+        and state["ego_available"]
     )
     print(json.dumps(state, ensure_ascii=False, sort_keys=True))
     return 0 if state["ready"] else 2
@@ -98,29 +110,32 @@ def cmd_cleanup() -> int:
     removed = 0
     try:
         if engine.WORK.is_dir():
-            for path in engine.WORK.glob("slide-*.png"):
-                if path.is_file() and not path.is_symlink():
-                    path.unlink()
+            for f in engine.WORK.glob("slide-*.png"):
+                try:
+                    f.unlink()
                     removed += 1
+                except OSError:
+                    pass
     finally:
         lock.close()
-    print(json.dumps({"removed_temp_slides": removed, "work_dir": str(engine.WORK)}, sort_keys=True))
+    print(json.dumps({"removed_temp_slides": removed, "work_dir": str(engine.WORK)},
+                     ensure_ascii=False, sort_keys=True))
     return 0
 
 
 def main(argv: list[str] | None = None) -> int:
-    command, rest = split_command(list(sys.argv[1:] if argv is None else argv))
-    if command == "run":
+    argv = list(sys.argv[1:] if argv is None else argv)
+    cmd, rest = split_command(argv)
+    if cmd == "run":
         return cmd_run(rest)
-    if rest:
-        print(f"ppt2pdf: {command} takes no arguments", file=sys.stderr)
-        return 2
-    if command == "check":
+    if cmd == "check":
         return cmd_check()
-    if command == "status":
+    if cmd == "status":
         return cmd_status()
-    return cmd_cleanup()
+    if cmd == "cleanup":
+        return cmd_cleanup()
+    return 1
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    sys.exit(main())
