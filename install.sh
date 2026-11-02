@@ -19,14 +19,14 @@ mkdir -p "${TARGET_HOME}/.agents/skills"
 mkdir -p "${TARGET_HOME}/.gemini/config/skills"
 
 # 2. 규칙(Rules) 동기화 (심볼릭 링크)
-echo "📦 [1/4] 규칙(Rules) 18종 동기화..."
+echo "📦 [1/4] 규칙(Rules) 19종 동기화..."
 for rule_file in "${SCRIPT_DIR}/rules/"*.md; do
   if [[ -f "${rule_file}" ]]; then
     base_name="$(basename "${rule_file}")"
     ln -sf "${rule_file}" "${TARGET_HOME}/.agents/rules/${base_name}"
   fi
 done
-echo "   ✅ 18개 규칙 파일이 ${TARGET_HOME}/.agents/rules/ 에 링크되었습니다."
+echo "   ✅ 19개 규칙 파일이 ${TARGET_HOME}/.agents/rules/ 에 링크되었습니다."
 
 # 2-1. 외부 스킬 가져오기 (라이선스상 저장소에 포함하지 않고 원본에서 받아옴)
 echo "📦 [외부] 외부 스킬(transitions.dev) 가져오기..."
@@ -62,16 +62,27 @@ GLOBAL_CONFIG_GEMINI="${TARGET_HOME}/.gemini/config/GEMINI.md"
 HOME_GEMINI="${TARGET_HOME}/GEMINI.md"
 
 # 전역 설정 파일 갱신
+# Antigravity는 전역 진입점에 적힌 `@[label](절대경로)` include만 펼친다.
+# `@path` 형식과, 펼쳐진 파일 안의 중첩 include는 글자 그대로 들어간다.
+# 그래서 상시 적용할 핵심 규칙은 진입점에 직접 include한다.
 cat <<EOF > "${GLOBAL_CONFIG_GEMINI}"
 # Antigravity Global Agent Rules
-@${SCRIPT_DIR}/GEMINI.md
+@[agy-rule GEMINI.md](${SCRIPT_DIR}/GEMINI.md)
+
+@[00-instinct](${SCRIPT_DIR}/rules/00-instinct.md)
+
+@[00-decision-autonomy](${SCRIPT_DIR}/rules/00-decision-autonomy.md)
+
+@[03-korean-natural-prose](${SCRIPT_DIR}/rules/03-korean-natural-prose.md)
+
+@[03-korean-verb-usage](${SCRIPT_DIR}/rules/03-korean-verb-usage.md)
 EOF
 echo "   ✅ ${GLOBAL_CONFIG_GEMINI} 생성 완료."
 
 # 사용자 홈 루트 GEMINI.md 갱신
 cat <<EOF > "${HOME_GEMINI}"
 # 글로벌 에이전트 규칙
-@${SCRIPT_DIR}/GEMINI.md
+@[agy-rule GEMINI.md](${SCRIPT_DIR}/GEMINI.md)
 EOF
 echo "   ✅ ${HOME_GEMINI} 생성 완료."
 
