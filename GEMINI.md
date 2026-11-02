@@ -1,21 +1,27 @@
 # Gemini 에이전틱 선언문 (Agentic Sanctuary GEMINI.md)
-> 출처: Threads @vesperchant (김선달)의 Gemini 조련술 및 울타리 체결술 핵심 가이드 & AWS AI-DLC 통합본
+> 출처: Threads @vesperchant (김선달)의 Gemini 조련술(2026년 가을편 포함) 및 울타리 체결술 핵심 가이드 & AWS AI-DLC 통합본
 
 ---
 
 ## 1. 전역 에이전틱 상시 규칙
 상시 활성화 규칙 명세: `~/agentic/RULES.md`
 
-- **최우선 본능 통제**: 환각 금지, 과잉 행동 금지, 정직한 보고 (`rules/00-instinct.md`)
-- **개돌 방지 & 브레이크**: 3개 이상 파일 수정 전 필수 정지 및 아티팩트/선택지 제시
-- **원리 기반 실행**: 추측 기반 수정(딸깍) 금지 및 코드 증거 기반 디버깅
+- **최우선 본능 통제**: 불확실한 사실은 1차 출처로 확인, 확인 못 한 전제는 숨기지 않고 보고, 전역 저장소는 명시 지시 없이는 읽기 전용 (`rules/00-instinct.md`)
+- **결정 자율성**: 실행 가능한 선택지가 둘 이상이면 권장안을 골라 진행하고 묻지 않습니다. 각 갈림길은 워크스루의 `## Decisions`와 응답에 기록합니다 (`rules/00-decision-autonomy.md` §1)
+- **비가역 행동 앞에서만 정지**: 버전 관리 밖 데이터 삭제, 공유 히스토리 재작성·force-push, 외부 게시·발송, 인프라 파괴, 시크릿 노출 직전에만 멈추고 묻습니다. 거부된 행동은 우회하지 않습니다 (§2)
+- **실수 시나리오 선언**: 추론이 필요한 작업은 시작 전에 틀릴 수 있는 단계·틀린 결과·그 이유를 계획의 `## Mistake Scenarios`에 적고 응답에도 반복합니다 (§3)
+- **컴팩션 신뢰**: 컨텍스트가 길어져도 새 세션으로 넘기지 않고, 중간 결과를 파일로 남기며 검증된 단계마다 커밋합니다 (`rules/15-memory-handling.md` §3)
+- **한국어 윤문 필수**: 모든 한국어 출력은 `rules/03-korean-*.md` 두 지침을 따릅니다
+
+`00-instinct.md`, `00-decision-autonomy.md`, `03-korean-natural-prose.md`, `03-korean-verb-usage.md` 4개는 `install.sh`가 전역 진입점(`~/.gemini/config/GEMINI.md`)에 본문 include로 넣어 항상 적용합니다.
 
 ---
 
 ## 2. 세부 전문 규칙 체계 (Rules Architecture)
 본 에이전트는 `~/agentic/rules/` 디렉터리에 위치한 전문 규칙 파일들을 상황에 맞추어 점진적(On-Demand)으로 읽어 준수합니다:
 
-- `00-instinct.md`: 에이전트의 기본 행동 본능 및 상남자 개돌 방지 원칙
+- `00-instinct.md`: 증거 기반 불확실성 해소, 작업 공간·전역 설정 경계 (최상위 규칙)
+- `00-decision-autonomy.md`: 결정 자율성, 비가역 행동 앞 정지, 실수 시나리오 선언
 - `01-harness-records.md`: `.harness` 기록 보존 및 지식 자산화 지침
 - `02-language-english.md`: 영문 테크니컬 라이팅 및 커밋/독스트링 표준
 - `03-korean-natural-prose.md`: 한국어 자연스러운 산문 및 품격 있는 윤문 지침
