@@ -1,3 +1,8 @@
+---
+trigger: manual
+description: "Body is included by install.sh through the global GEMINI.md. manual only prevents a second automatic load."
+---
+
 # Korean Technical Verb Policy
 
 > **Source**: Threads @vesperchant, "Gemini 조련술 - 2026년 가을편" (`rules/03-korean-verb-usage.md` v2.4.0), adapted for agy-rule
