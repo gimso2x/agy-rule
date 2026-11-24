@@ -70,6 +70,8 @@ agy-rule/
 │   ├── 23-architecture-audit.md # 아키텍처 감사 및 트레이드오프 검토 규약
 │   ├── 24-code-quality.md       # DRY, 단일 책임, 엄격한 타입 및 보안 표준
 │   └── 25-git-workflow.md       # Git 커밋 메시지 규격 및 브랜치 전략
+├── scripts/check_rules.py       # 규칙 frontmatter(trigger) 검증, install.sh가 먼저 호출
+│   └── tests/                   # 검증 스크립트 단위 테스트 (python3 -m unittest)
 ├── skills/                      # 정예 에이전트 스킬 생태계 (8종 완비)
 │   ├── aidlc-workflow/          # AWS AI-DLC 수명주기 소프트웨어 기획/건설
 │   ├── archify/                 # 반응형 대화형 HTML 아키텍처 다이어그램 생성기
@@ -106,7 +108,7 @@ cd ~/agentic && ./install.sh
 ```
 
 `install.sh` 스크립트가 다음 작업을 자동으로 수행합니다:
-* `~/.agents/rules/` 에 19종 전문 규칙 자동 심볼릭 링크
+* 규칙 frontmatter 검증 후, `~/.agents/rules/` 와 Antigravity 전역 규칙 경로 `~/.gemini/config/rules/` 에 19종 전문 규칙 심볼릭 링크
 * `~/.agents/skills/` 및 `~/.gemini/config/skills/` 에 8종 스킬 자동 심볼릭 링크
 * `~/.gemini/config/GEMINI.md` 및 `~/GEMINI.md` 에 전역 엔트리포인트 자동 구성 (Antigravity가 펼치는 `@[label](절대경로)` include 형식. 핵심 규칙 4종 `00-instinct`, `00-decision-autonomy`, `03-korean-*`은 진입점에 본문을 직접 include)
 * `.harness/` 8대 디렉터리 자산화 보장
