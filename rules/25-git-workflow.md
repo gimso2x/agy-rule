@@ -1,3 +1,8 @@
+---
+trigger: model_decision
+description: "Apply when writing commit messages, naming branches, or deciding branch strategy."
+---
+
 # Git 워크플로우 규칙
 
 ## 커밋 메시지 형식
