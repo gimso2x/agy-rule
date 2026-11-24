@@ -13,7 +13,15 @@ echo "   - 원천 경로: ${SCRIPT_DIR}"
 echo "   - 대상 홈  : ${TARGET_HOME}"
 echo "=========================================================="
 
+# 0. 규칙 frontmatter 검증 (없으면 Antigravity가 규칙을 조용히 무시함). 파일을 바꾸기 전에 먼저 실행합니다.
+if command -v python3 >/dev/null 2>&1; then
+  python3 "${SCRIPT_DIR}/scripts/check_rules.py"
+else
+  echo "⚠️  python3가 없어 규칙 frontmatter 검증을 건너뜁니다."
+fi
+
 # 1. 디렉터리 준비
+mkdir -p "${TARGET_HOME}/.gemini/config/rules"
 mkdir -p "${TARGET_HOME}/.agents/rules"
 mkdir -p "${TARGET_HOME}/.agents/skills"
 mkdir -p "${TARGET_HOME}/.gemini/config/skills"
@@ -24,6 +32,8 @@ for rule_file in "${SCRIPT_DIR}/rules/"*.md; do
   if [[ -f "${rule_file}" ]]; then
     base_name="$(basename "${rule_file}")"
     ln -sf "${rule_file}" "${TARGET_HOME}/.agents/rules/${base_name}"
+    # 공식 문서가 정한 전역 모듈형 규칙 경로 (~/.gemini/config/rules/*.md)
+    ln -sf "${rule_file}" "${TARGET_HOME}/.gemini/config/rules/${base_name}"
   fi
 done
 echo "   ✅ 19개 규칙 파일이 ${TARGET_HOME}/.agents/rules/ 에 링크되었습니다."
