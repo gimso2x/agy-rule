@@ -1,3 +1,8 @@
+---
+trigger: model_decision
+description: "Apply before running terminal commands, background processes, or long-running CLI tasks."
+---
+
 # 08-cli-execution: CLI 터미널 실행 안전 및 프로세스 관리 원칙
 
 ## 1. 안전 실행 원칙
