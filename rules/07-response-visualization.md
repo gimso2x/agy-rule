@@ -1,3 +1,8 @@
+---
+trigger: model_decision
+description: "Apply when a response needs a table, Mermaid diagram, or other visual structure."
+---
+
 # 07-response-visualization (응답 시각화 표준)
 
 > **원칙**: 복잡한 아키텍처와 관계는 장황한 줄글보다 시각적 다이어그램과 구조화된 표가 압도적인 전달력을 가집니다.
