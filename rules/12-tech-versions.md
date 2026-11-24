@@ -1,3 +1,8 @@
+---
+trigger: model_decision
+description: "Apply when choosing, pinning, or upgrading language, framework, or dependency versions."
+---
+
 # 12-tech-versions (기술 스택 및 버전 관리)
 
 > **원칙**: 에이전트는 사용자의 환경을 임의로 변경하지 않습니다. 현재 설치된 런타임과 프로젝트의 고정 버전을 절대적 기준으로 삼습니다.
