@@ -1,3 +1,8 @@
+---
+trigger: manual
+description: "Body is included by install.sh through the global GEMINI.md. manual only prevents a second automatic load."
+---
+
 # Decision Autonomy and Irreversible Stops
 
 > **Source**: Threads @vesperchant, "Gemini 조련술 - 2026년 가을편" (`rules/00-decision-autonomy.md` v1.3.0), adapted for agy-rule
