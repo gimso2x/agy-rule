@@ -1,3 +1,8 @@
+---
+trigger: model_decision
+description: "Apply when writing a spec, requirements document, or design specification."
+---
+
 # 22-generic-spec-standard (일반 스펙 명세 표준)
 
 > **원칙**: 구현 전 명세가 불명확하면 코드는 반드시 방황합니다. 복잡한 기능 구현 전 5대 표준 섹션을 갖춘 명세서를 먼저 수립합니다.
