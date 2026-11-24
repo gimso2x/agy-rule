@@ -1,3 +1,8 @@
+---
+trigger: model_decision
+description: "Apply when writing or reviewing code style, early returns, and clean-code structure."
+---
+
 # 21-coding-style (클린 코드 스타일 및 구현 표준)
 
 > **원칙**: 코드는 읽는 사람을 위해 작성합니다. 단순함이 기교보다 우월하며, 깊은 중첩과 불필요한 추상화를 배제합니다.
