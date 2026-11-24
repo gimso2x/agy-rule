@@ -1,3 +1,8 @@
+---
+trigger: model_decision
+description: "Apply when using meta labels, commit tags, or notice blocks in responses and documents."
+---
+
 # 05-meta-labels (메타 라벨 및 태그 표준화)
 
 > **원칙**: 메타데이터는 시스템과 사람이 변경 사항의 성격을 즉시 식별할 수 있도록 돕는 규약입니다. 일관된 접두사와 태그 형식을 엄격히 준수합니다.

@@ -1,3 +1,8 @@
+---
+trigger: model_decision
+description: "Apply when writing English technical prose, commit messages, or docstrings."
+---
+
 # 02-language-english (영문 테크니컬 라이팅 표준)
 
 > **원칙**: 영문 작성 시 직설적이고 명확한 평문(Plain English)을 사용합니다. 번역기 투의 완곡 표현을 배제하고 능동적이고 간결한 엔지니어링 문장을 구사합니다.

@@ -1,3 +1,8 @@
+---
+trigger: manual
+description: "Body is included by install.sh through the global GEMINI.md. manual only prevents a second automatic load."
+---
+
 # Instinct
 
 > **Source**: Threads @vesperchant, "Gemini 조련술 - 2026년 가을편" (`rules/00-instinct.md` v1.12.1), adapted for agy-rule

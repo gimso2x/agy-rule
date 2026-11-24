@@ -1,3 +1,8 @@
+---
+trigger: model_decision
+description: "Apply when writing or reviewing code for DRY, single responsibility, typing, and security."
+---
+
 # 코드 품질 규칙
 
 ## 필수 준수 사항

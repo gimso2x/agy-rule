@@ -1,3 +1,8 @@
+---
+trigger: model_decision
+description: "Apply when naming files, variables, functions, classes, or other identifiers."
+---
+
 # 06-naming-conventions (명명 규칙 표준)
 
 > **원칙**: 이름은 코드의 의도를 가장 직접적으로 드러내는 인터페이스입니다. 추측하기 쉬운 명확한 어휘를 사용하고 모호한 축약어를 배제합니다.

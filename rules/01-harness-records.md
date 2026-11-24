@@ -1,3 +1,8 @@
+---
+trigger: model_decision
+description: "Apply when creating or updating .harness plans, audits, walkthroughs, or handoff records."
+---
+
 # 01-harness-records: 하네스 기록 체계 및 지식 자산화 지침
 
 ## 1. 목적

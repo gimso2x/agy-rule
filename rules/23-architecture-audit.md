@@ -1,3 +1,8 @@
+---
+trigger: model_decision
+description: "Apply when reviewing architecture, comparing designs, or weighing trade-offs."
+---
+
 # 23-architecture-audit (아키텍처 감사 및 트레이드오프)
 
 > **원칙**: 아키텍처 결정은 되돌리기 어려운 비가역적 비용을 발생시킵니다. 구조적 변경 직전에는 반드시 감사를 거치고 트레이드오프를 검증합니다.

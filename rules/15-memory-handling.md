@@ -1,3 +1,8 @@
+---
+trigger: model_decision
+description: "Apply in long sessions, when context grows large, or when saving intermediate results and memory."
+---
+
 # 15-memory-handling: 컨텍스트 보존 및 장기 메모리 관리 원칙
 
 ## 1. 목적

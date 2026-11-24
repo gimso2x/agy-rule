@@ -1,3 +1,8 @@
+---
+trigger: model_decision
+description: "Apply when writing or editing prose that uses special symbols, dashes, quotes, or other punctuation."
+---
+
 # 04-punctuation (문장 부호 및 기호 규약)
 
 > **원칙**: 문장 부호는 의미를 정밀하게 돕는 도구입니다. 기계적인 기호 남발을 차단하고 격식 있는 엔지니어링 문서 양식을 유지합니다.
